@@ -27,19 +27,9 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller==6.3.0
 
-    - name: Update version.txt
-      run: |
-        $version = "${{ github.ref_name }}".TrimStart('v')
-        Set-Content -Path version.txt -Value $version
-      shell: pwsh
-
     - name: Build executable
       run: |
-        pyinstaller RemoteHand.spec --distpath ./dist --buildpath ./build --workpath ./build --noconfirm
-
-    - name: List dist contents
-      run: dir dist
-      shell: cmd
+        pyinstaller RemoteHand.spec
 
     - name: Create Release
       uses: softprops/action-gh-release@v1

@@ -17,6 +17,8 @@ a = Analysis(
         'PIL._tkinter_finder',
         'requests',
         'psutil',
+        'keyring',
+        'telegram',
     ],
     hookspath=[],
     hooksconfig={},
