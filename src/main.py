@@ -1,26 +1,42 @@
 import customtkinter as ctk
 from tkinter import messagebox
 import sys
-import threading
-import random
-import string
-import logging
 import os
-import json
+import threading
+import logging
+import socket
 
 # Налаштування логування
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# Базові функції
-from utils import open_rdp_connection, close_all_rdp_sessions, test_connection
-from config import RDP_HOST, RDP_PORT, PING_HOST, APP_NAME
-from updater import check_and_update
+# ============ ПЕРЕВІРКА DEV РЕЖИМУ ============
+DEV_MODE = os.getenv('REMOTEHAND_DEV_MODE') == '1'
+logger.info(f"{'🔧 DEV РЕЖИМ' if DEV_MODE else '✅ PRODUCTION РЕЖИМ'}")
 
-# Новітні функції
+if not DEV_MODE:
+    # ТІЛЬКИ В PRODUCTION
+    try:
+        from updater import check_and_update
+        check_and_update()
+    except Exception as e:
+        logger.warning(f"Помилка перевірки оновлень: {e}")
+
+# ============ ІМПОРТИ ============
+from utils import close_all_rdp_sessions, test_connection
+from config import RDP_HOST, RDP_PORT, PING_HOST, APP_NAME
+
+# Нові імпорти
+from config_manager import ConfigManager
+from telegram_api import TelegramAPI
+from setup_wizard import SetupWizard
+from network_test import NetworkTest
+
 try:
     from rdp_manager import RDPManager
-
     rdp_manager_available = True
 except ImportError as e:
     rdp_manager_available = False
@@ -28,19 +44,10 @@ except ImportError as e:
 
 try:
     from anydesk_manager import AnyDeskManager
-
     anydesk_available = True
 except ImportError as e:
     anydesk_available = False
     logger.warning(f"anydesk_manager не доступна: {e}")
-
-try:
-    from telegram_helper import TelegramHelper
-
-    telegram_available = True
-except ImportError as e:
-    telegram_available = False
-    logger.warning(f"telegram_helper не доступна: {e}")
 
 
 class RemoteHandApp(ctk.CTk):
@@ -49,30 +56,47 @@ class RemoteHandApp(ctk.CTk):
 
         # Налаштування вікна
         self.title(APP_NAME)
-        self.geometry("500x900")
-        self.resizable(False, False)
+        self.geometry("520x750")
+        self.resizable(True, True)
 
-        # Встановлення теми iOS-style
+        # Встановлення теми
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("blue")
 
         # Ініціалізація менеджерів
+        self.config = ConfigManager()
+        self.telegram = TelegramAPI(
+            self.config.get("telegram_token"),
+            self.config.get("telegram_chat_id")
+        )
+
         if rdp_manager_available:
-            self.rdp_manager = RDPManager()
+            self.rdp_manager = RDPManager(self.config, self.telegram)
         else:
             self.rdp_manager = None
 
         if anydesk_available:
-            self.anydesk_manager = AnyDeskManager()
+            self.anydesk_manager = AnyDeskManager(self.config, self.telegram)
         else:
             self.anydesk_manager = None
 
-        if telegram_available:
-            self.telegram = TelegramHelper()
-        else:
-            self.telegram = None
+        self.network_test = NetworkTest(self.config, self.telegram)
 
-        self.setup_ui()
+        # Перевірити перший запуск
+        if self.config.is_first_run():
+            self.show_setup_wizard()
+        else:
+            self.setup_ui()
+
+    def show_setup_wizard(self):
+        """Показати вікно налаштування при першому запуску"""
+        def on_setup_complete(result):
+            self.config.set("store", result["store"])
+            self.config.set("location", result["location"])
+            self.setup_ui()
+
+        wizard = SetupWizard(self, on_setup_complete)
+        self.wait_window(wizard)
 
     def setup_ui(self):
         """Створення UI"""
@@ -83,7 +107,17 @@ class RemoteHandApp(ctk.CTk):
             text="RemoteHand",
             font=ctk.CTkFont(size=28, weight="bold")
         )
-        title_label.pack(pady=20)
+        title_label.pack(pady=15)
+
+        # Інформація про магазин/локацію
+        info_label = ctk.CTkLabel(
+            self,
+            text=f"📍 {self.config.store_location_text}",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        )
+        info_label.pack(pady=(0, 20))
+        self.info_label = info_label
 
         # ==================== RDP БЛОК ====================
         rdp_frame = ctk.CTkFrame(self)
@@ -91,72 +125,60 @@ class RemoteHandApp(ctk.CTk):
 
         ctk.CTkLabel(
             rdp_frame,
-            text="📋 1С - RDP Підключення",
+            text="📋 Підключення до 1С",
             font=ctk.CTkFont(size=13, weight="bold")
         ).pack(anchor="w", pady=(0, 10))
 
-        # Кнопка звичайного RDP
-        open_1c_btn = ctk.CTkButton(
+        # Основна кнопка RDP
+        rdp_btn = ctk.CTkButton(
             rdp_frame,
             text="🖥️ Відкрити 1С (RDP)",
-            command=self.open_1c_dialog,
-            height=45,
-            font=ctk.CTkFont(size=12),
-            corner_radius=10
+            command=self.open_rdp,
+            height=50,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            corner_radius=12,
+            fg_color="#007AFF",
+            hover_color="#0051D5"
         )
-        open_1c_btn.pack(fill="x", pady=(0, 8))
-
-        # Кнопка швидкого підключення
-        if rdp_manager_available:
-            auto_rdp_btn = ctk.CTkButton(
-                rdp_frame,
-                text="⚡ Швидке підключення (авто-пароль)",
-                command=self.connect_rdp_auto,
-                height=45,
-                font=ctk.CTkFont(size=12),
-                corner_radius=10,
-                fg_color="#00AA00",
-                hover_color="#008800"
-            )
-            auto_rdp_btn.pack(fill="x")
+        rdp_btn.pack(fill="x", pady=(0, 10))
 
         # ==================== ЗАКРИТТЯ СЕСІЙ ====================
         close_sessions_btn = ctk.CTkButton(
             self,
             text="❌ Закрити всі RDP сесії",
             command=self.close_sessions_confirm,
-            height=50,
-            font=ctk.CTkFont(size=13, weight="bold"),
-            corner_radius=15,
+            height=45,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            corner_radius=12,
             fg_color="#FF3B30",
             hover_color="#D70015"
         )
         close_sessions_btn.pack(pady=15, padx=20, fill="x")
 
         # ==================== ANYDESK БЛОК ====================
-        if anydesk_available and telegram_available:
+        if anydesk_available:
             anydesk_frame = ctk.CTkFrame(self)
             anydesk_frame.pack(pady=15, padx=20, fill="x")
 
             ctk.CTkLabel(
                 anydesk_frame,
-                text="🌐 Віддалений доступ - AnyDesk",
+                text="🌐 Віддалений доступ",
                 font=ctk.CTkFont(size=13, weight="bold")
             ).pack(anchor="w", pady=(0, 10))
 
             anydesk_btn = ctk.CTkButton(
                 anydesk_frame,
-                text="🌐 Запустити AnyDesk + Telegram",
+                text="🚀 Запустити AnyDesk",
                 command=self.start_anydesk,
-                height=45,
-                font=ctk.CTkFont(size=12),
-                corner_radius=10,
+                height=50,
+                font=ctk.CTkFont(size=12, weight="bold"),
+                corner_radius=12,
                 fg_color="#FF6B35",
                 hover_color="#CC5529"
             )
-            anydesk_btn.pack(fill="x")
+            anydesk_btn.pack(fill="x", pady=(0, 10))
 
-        # ==================== ТЕСТ З'ЄДНАННЯ ====================
+        # ==================== ТЕСТ МЕРЕЖІ ====================
         test_frame = ctk.CTkFrame(self)
         test_frame.pack(pady=15, padx=20, fill="x")
 
@@ -168,15 +190,15 @@ class RemoteHandApp(ctk.CTk):
 
         test_btn = ctk.CTkButton(
             test_frame,
-            text="🌐 Тест з'єднання (ping 8.8.8.8)",
-            command=self.test_ping,
-            height=45,
-            font=ctk.CTkFont(size=12),
-            corner_radius=10,
+            text="📡 Тест з'єднання",
+            command=self.run_network_test,
+            height=50,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            corner_radius=12,
             fg_color="#34C759",
             hover_color="#248A3D"
         )
-        test_btn.pack(fill="x")
+        test_btn.pack(fill="x", pady=(0, 10))
 
         # ==================== СТАТУС ====================
         self.status_label = ctk.CTkLabel(
@@ -185,137 +207,142 @@ class RemoteHandApp(ctk.CTk):
             font=ctk.CTkFont(size=10),
             text_color="gray"
         )
-        self.status_label.pack(pady=20)
+        self.status_label.pack(pady=10)
 
-    def open_1c_dialog(self):
-        """Діалог для вводу пароля та запуску RDP"""
-        dialog = ctk.CTkInputDialog(
-            text="Введіть пароль для RDP:",
-            title="Підключення до 1С"
+        # ==================== КНОПКА РЕДАГУВАННЯ МАГАЗИНУ ====================
+        settings_frame = ctk.CTkFrame(self)
+        settings_frame.pack(pady=10, padx=20, fill="x")
+
+        settings_btn = ctk.CTkButton(
+            settings_frame,
+            text="⚙️ Змінити магазин/локацію",
+            command=self.show_setup_wizard,
+            height=35,
+            font=ctk.CTkFont(size=10),
+            corner_radius=8,
+            fg_color="#999999",
+            hover_color="#666666"
         )
-        password = dialog.get_input()
+        settings_btn.pack(fill="x")
 
-        if password:
-            # Зберегти пароль якщо доступна функція
-            if self.rdp_manager:
-                self.rdp_manager.save_credentials(RDP_HOST, "admin", password)
-
-            # Запустити RDP
-            open_rdp_connection(RDP_HOST, RDP_PORT)
-            self.status_label.configure(text=f"✅ Підключення до {RDP_HOST}:{RDP_PORT}")
-
-    def connect_rdp_auto(self):
-        """Швидке підключення з автоматичним паролем"""
+    def open_rdp(self):
+        """Відкрити RDP"""
         if not self.rdp_manager:
             messagebox.showerror("Помилка", "RDP менеджер не доступен")
             return
 
-        self.status_label.configure(text="⏳ Підключення...")
-        self.update()
+        # Перевірити, чи пароль вже збережено
+        saved_password = self.rdp_manager.get_credentials(RDP_HOST, "admin")
 
-        if self.rdp_manager.connect_rdp_auto(RDP_HOST, RDP_PORT, "admin"):
-            self.status_label.configure(text="✅ Автоматичне підключення активовано")
+        if saved_password:
+            # Використовувати збережений пароль
+            self.set_status("⏳ Підключення...", "processing")
+
+            def connect():
+                try:
+                    if self.rdp_manager.connect_rdp(RDP_HOST, RDP_PORT, "admin", saved_password):
+                        self.set_status("✅ Підключено", "success")
+                    else:
+                        self.set_status("❌ Помилка підключення", "error")
+                except Exception as e:
+                    logger.error(f"Помилка: {e}")
+                    self.set_status("❌ Критична помилка", "error")
+
+            thread = threading.Thread(target=connect, daemon=True)
+            thread.start()
         else:
-            self.status_label.configure(text="❌ Пароль не збережено")
-            messagebox.showerror(
-                "Помилка",
-                "Пароль не знайдено.\n\n"
-                "Спочатку натисніть '🖥️ Відкрити 1С (RDP)' для збереження пароля."
+            # Запросити новий пароль
+            dialog = ctk.CTkInputDialog(
+                text="Введіть пароль для RDP:",
+                title="Підключення до 1С"
             )
+            password = dialog.get_input()
+
+            if password:
+                self.set_status("💾 Збереження пароля...", "processing")
+
+                # Спробувати підключитися
+                if self.rdp_manager.connect_rdp(RDP_HOST, RDP_PORT, "admin", password):
+                    # Якщо успішно, то зберегти пароль
+                    self.rdp_manager.save_credentials(RDP_HOST, "admin", password)
+                    self.set_status("✅ Успішно підключено", "success")
+                else:
+                    self.set_status("❌ Помилка підключення", "error")
 
     def close_sessions_confirm(self):
         """Підтвердження закриття сесій"""
         result = messagebox.askyesno(
             "Підтвердження",
-            "Ви впевнені, що хочете закрити всі віддалені RDP сесії?"
+            "Ви впевнені, що хочете закрити всі RDP сесії?"
         )
         if result:
+            self.set_status("⏳ Закриття сесій...", "processing")
             close_all_rdp_sessions()
-            self.status_label.configure(text="✅ Всі RDP сесії закрито")
-            messagebox.showinfo("Успіх", "Всі RDP сесії закрито")
+            self.set_status("✅ Всі сесії закрито", "success")
 
     def start_anydesk(self):
-        """Запустити AnyDesk та відправити код в Telegram"""
+        """Запустити AnyDesk - БЕЗ показу пароля!"""
         if not self.anydesk_manager:
             messagebox.showerror("Помилка", "AnyDesk менеджер не доступен")
             return
 
-        if not self.telegram:
-            messagebox.showerror("Помилка", "Telegram помічник не доступен")
-            return
-
-        self.status_label.configure(text="⏳ Запуск AnyDesk...")
-        self.update()
+        self.set_status("⏳ Запуск AnyDesk...", "processing")
 
         def anydesk_task():
             try:
-                # Генерувати пароль
-                password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-
-                logger.info(f"Запуск AnyDesk з паролем: {password}")
-
-                # Запустити AnyDesk
-                anydesk_id, pwd = self.anydesk_manager.start(password)
+                # Запустити AnyDesk - пароль НЕ передаємо та НЕ показуємо!
+                anydesk_id, pwd = self.anydesk_manager.start(None)
 
                 if anydesk_id:
-                    logger.info(f"AnyDesk ID: {anydesk_id}")
-
-                    # Відправити в Telegram
-                    if self.telegram.send_anydesk_code_sync(anydesk_id, password):
-                        self.status_label.configure(
-                            text=f"✅ AnyDesk запущено\n🆔 ID: {anydesk_id}\n✉️ Код надісланий в Telegram"
-                        )
-                        messagebox.showinfo(
-                            "Успіх",
-                            f"AnyDesk запущено!\n\n"
-                            f"ID: {anydesk_id}\n"
-                            f"Пароль: {password}\n\n"
-                            f"Код надісланий в Telegram"
-                        )
-                    else:
-                        self.status_label.configure(
-                            text=f"⚠️ AnyDesk запущено\n🆔 ID: {anydesk_id}\n❌ Помилка Telegram"
-                        )
-                        messagebox.showwarning(
-                            "Частикова помилка",
-                            f"AnyDesk запущено, але код не надісланий в Telegram\n\n"
-                            f"ID: {anydesk_id}\n"
-                            f"Пароль: {password}"
-                        )
+                    self.set_status(f"✅ AnyDesk запущено\n🆔 ID: {anydesk_id}", "success")
+                    messagebox.showinfo(
+                        "✅ AnyDesk запущено",
+                        f"ID підключення: {anydesk_id}\n\n"
+                        f"Дані надіслані в Telegram\n"
+                        f"Пароль встановлено автоматично"
+                    )
                 else:
-                    self.status_label.configure(text="❌ Помилка запуску AnyDesk")
-                    messagebox.showerror("Помилка", "Не вдалося запустити AnyDesk")
-
+                    self.set_status("❌ AnyDesk вже запущено", "error")
+                    messagebox.showwarning(
+                        "⚠️ Увага",
+                        "AnyDesk вже запущено або не вдалося запустити"
+                    )
             except Exception as e:
                 logger.error(f"Помилка: {e}")
-                self.status_label.configure(text="❌ Помилка виконання")
-                messagebox.showerror("Помилка", f"Виникла помилка:\n{str(e)}")
+                self.set_status("❌ Помилка виконання", "error")
 
-        # Запустити в потоці
         thread = threading.Thread(target=anydesk_task, daemon=True)
         thread.start()
 
-    def test_ping(self):
-        """Тест ping з'єднання"""
-        self.status_label.configure(text="⏳ Перевірка з'єднання...")
-        self.update()
+    def run_network_test(self):
+        """Запустити тест мережі"""
+        self.set_status("⏳ Тест мережі...", "processing")
 
-        if test_connection(PING_HOST):
-            self.status_label.configure(text=f"✅ З'єднання з {PING_HOST} успішне")
-            messagebox.showinfo("Успіх", f"З'єднання з {PING_HOST} працює ✅")
-        else:
-            self.status_label.configure(text=f"❌ З'єднання з {PING_HOST} не вдалося")
-            messagebox.showerror("Помилка", f"Не вдалося з'єднатися з {PING_HOST}")
+        def test_task():
+            try:
+                result = self.network_test.run_full_test()
+                self.set_status(f"{result['status']}", result['color'])
+            except Exception as e:
+                logger.error(f"Помилка тесту: {e}")
+                self.set_status("❌ Помилка тесту", "error")
+
+        thread = threading.Thread(target=test_task, daemon=True)
+        thread.start()
+
+    def set_status(self, text, status_type="info"):
+        """Встановити статус з кольором"""
+        color_map = {
+            "success": "green",
+            "error": "red",
+            "processing": "blue",
+            "info": "gray"
+        }
+        self.status_label.configure(text=text, text_color=color_map.get(status_type, "gray"))
 
 
 def main():
-    # ⚠️ ВИДАЛЕНО ПЕРЕВІРКУ ОНОВЛЕНЬ ДЛЯ ЛОКАЛЬНОГО ТЕСТУВАННЯ
-    # try:
-    #     check_and_update()
-    # except Exception as e:
-    #     logger.warning(f"Помилка перевірки оновлень: {e}")
-
-    # Запуск програми
+    """Головна функція"""
+    logger.info("Запуск RemoteHand...")
     app = RemoteHandApp()
     app.mainloop()
 

@@ -1,60 +1,84 @@
-import requests
 import os
 import sys
+import requests
 import subprocess
+import shutil
+import logging
 from pathlib import Path
-from config import GITHUB_API_URL, VERSION_FILE, BASE_DIR
+
+logger = logging.getLogger(__name__)
 
 
-def get_current_version():
-    """Отримання поточної версії"""
-    version_path = BASE_DIR / VERSION_FILE
-    if version_path.exists():
-        with open(version_path, 'r') as f:
-            return f.read().strip()
-    return "0.0.0"
+class UpdaterManager:
+    """Менеджер для перевірки та встановлення оновлень"""
 
+    GITHUB_REPO = "ShevchukVI/RemoteHand"
+    GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
-def get_latest_version():
-    """Отримання останньої версії з GitHub"""
-    try:
-        response = requests.get(GITHUB_API_URL, timeout=5)
-        if response.status_code == 200:
+    def __init__(self):
+        self.app_dir = Path(__file__).parent.parent
+        self.version_file = self.app_dir / "version.txt"
+        self.current_version = self.get_current_version()
+
+    def get_current_version(self):
+        """Отримати поточну версію з version.txt"""
+        if self.version_file.exists():
+            try:
+                with open(self.version_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        if 'remotehand' in line.lower() and 'ver' in line.lower():
+                            version = line.split(':')[-1].strip()
+                            return version
+            except:
+                pass
+        return "1.0.0"
+
+    def get_latest_version(self):
+        """Отримати найновішу версію з GitHub"""
+        try:
+            response = requests.get(self.GITHUB_API_URL, timeout=10)
+            response.raise_for_status()
             data = response.json()
-            return data['tag_name'].lstrip('v'), data['assets'][0]['browser_download_url']
-    except Exception as e:
-        print(f"Помилка перевірки оновлень: {e}")
-    return None, None
+            tag = data.get('tag_name', 'v1.0.0')
+            return tag.lstrip('v')
+        except Exception as e:
+            logger.warning(f"Не вдалося отримати версію з GitHub: {e}")
+            return None
+
+    def compare_versions(self, current, latest):
+        """Порівняти версії"""
+        try:
+            current_parts = [int(x) for x in current.split('.')]
+            latest_parts = [int(x) for x in latest.split('.')]
+            return latest_parts > current_parts
+        except:
+            return False
+
+    def check_and_update(self):
+        """Перевірити та встановити оновлення"""
+        # Не оновлювати в DEV режимі!
+        if os.getenv('REMOTEHAND_DEV_MODE') == '1':
+            logger.info("🔧 DEV режим - пропускаємо оновлення")
+            return False
+
+        logger.info("Перевірка оновлень...")
+
+        latest_version = self.get_latest_version()
+        if not latest_version:
+            logger.info("Не вдалося перевірити оновлення")
+            return False
+
+        if self.compare_versions(self.current_version, latest_version):
+            logger.info(f"Доступне оновлення: {latest_version}")
+            # Оновлення буде завантажено EXE, не у .py версії
+            return True
+
+        logger.info(f"Версія актуальна: {self.current_version}")
+        return False
 
 
-def download_update(download_url, save_path):
-    """Завантаження оновлення"""
-    response = requests.get(download_url, stream=True)
-    with open(save_path, 'wb') as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
-
-
+# Глобальна функція для використання в main.py
 def check_and_update():
-    """Перевірка та встановлення оновлень"""
-    current_version = get_current_version()
-    latest_version, download_url = get_latest_version()
-
-    if latest_version and latest_version > current_version:
-        print(f"Доступне оновлення: {latest_version}")
-        update_path = BASE_DIR / "RemoteHand_new.exe"
-        download_update(download_url, update_path)
-
-        # Запуск оновленої версії та закриття поточної
-        batch_script = f'''
-        @echo off
-        timeout /t 2 /nobreak
-        move /y "{update_path}" "{sys.executable}"
-        start "" "{sys.executable}"
-        '''
-        batch_path = BASE_DIR / "update.bat"
-        with open(batch_path, 'w') as f:
-            f.write(batch_script)
-        subprocess.Popen(['cmd', '/c', str(batch_path)], shell=True)
-        sys.exit(0)
-    return False
+    """Функція для імпорту в main.py"""
+    updater = UpdaterManager()
+    return updater.check_and_update()
