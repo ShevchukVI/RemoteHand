@@ -38,14 +38,21 @@ class ConfigManager:
         with open(self.config_file, 'w', encoding='utf-8') as f:
             json.dump(self.config, f, indent=4, ensure_ascii=False)
 
-    def get(self, key, default=None):
-        """Отримати значення з конфігу"""
-        return self.config.get(key, default)
-
     def set(self, key, value):
-        """Встановити значення в конфігу"""
-        self.config[key] = value
-        self.save_config()
+        """Встановити значення в конфіг"""
+        if key == "user_name":
+            self.config['user_name'] = value
+        elif key == "store":
+            self.config['store'] = value
+        elif key == "location":
+            self.config['location'] = value
+        # ... решта код ...
+        self.save()
+
+    def get(self, key, default=""):
+        """Отримати значення з конфігу"""
+        if key == "user_name":
+            return self.config.get('user_name', '')
 
     def is_first_run(self):
         """Перевірити, це перший запуск"""

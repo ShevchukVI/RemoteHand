@@ -1,16 +1,18 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Завантажити .env
+load_dotenv()
 
 APP_NAME = "RemoteHand"
-VERSION_FILE = "version.txt"
-GITHUB_REPO = "ShevchukVI/RemoteHand"
-GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-
-# RDP налаштування
 RDP_HOST = "23.88.7.196"
-RDP_PORT = "4420"
-PING_HOST = "8.8.8.8"
+RDP_PORT = 3389
+PING_HOST = "23.88.7.196"
 
-# Шляхи
-BASE_DIR = Path(__file__).parent
-LOCK_FILE = BASE_DIR / f"{APP_NAME}.lock"
+# 🔒 ЗІ ЗМІННИХ СЕРЕДОВИЩА, А НЕ З .env!
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+
+# Файли
+LOCK_FILE = Path.home() / ".remotehand" / "lock"

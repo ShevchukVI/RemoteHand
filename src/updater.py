@@ -2,7 +2,7 @@ import os
 import sys
 import requests
 import subprocess
-import shutil
+import time
 import logging
 from pathlib import Path
 
@@ -21,14 +21,11 @@ class UpdaterManager:
         self.current_version = self.get_current_version()
 
     def get_current_version(self):
-        """Отримати поточну версію з version.txt"""
+        """Отримати поточну версію"""
         if self.version_file.exists():
             try:
                 with open(self.version_file, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        if 'remotehand' in line.lower() and 'ver' in line.lower():
-                            version = line.split(':')[-1].strip()
-                            return version
+                    return f.read().strip()
             except:
                 pass
         return "1.0.0"
@@ -54,9 +51,33 @@ class UpdaterManager:
         except:
             return False
 
+    def download_and_update(self, latest_version):
+        """Завантажити та встановити нову версію"""
+        try:
+            logger.info(f"📥 Завантажую RemoteHand v{latest_version}...")
+
+            download_url = f"https://github.com/{self.GITHUB_REPO}/releases/download/v{latest_version}/RemoteHand.exe"
+
+            # Завантажити нову версію
+            response = requests.get(download_url, timeout=30)
+            response.raise_for_status()
+
+            # Збезпечити як .new
+            new_exe = Path(sys.executable).parent / "RemoteHand_new.exe"
+
+            with open(new_exe, 'wb') as f:
+                f.write(response.content)
+
+            logger.info(f"✅ RemoteHand v{latest_version} завантажено")
+            return str(new_exe)
+
+        except Exception as e:
+            logger.error(f"❌ Помилка завантаження: {e}")
+            return None
+
     def check_and_update(self):
         """Перевірити та встановити оновлення"""
-        # Не оновлювати в DEV режимі!
+        # НЕ оновлювати в DEV режимі!
         if os.getenv('REMOTEHAND_DEV_MODE') == '1':
             logger.info("🔧 DEV режим - пропускаємо оновлення")
             return False
@@ -69,15 +90,21 @@ class UpdaterManager:
             return False
 
         if self.compare_versions(self.current_version, latest_version):
-            logger.info(f"Доступне оновлення: {latest_version}")
-            # Оновлення буде завантажено EXE, не у .py версії
-            return True
+            logger.info(f"📦 Доступне оновлення: {latest_version}")
+            logger.info(f"Поточна версія: {self.current_version}")
 
-        logger.info(f"Версія актуальна: {self.current_version}")
+            # Завантажити нову версію
+            new_exe = self.download_and_update(latest_version)
+
+            if new_exe:
+                logger.info(f"✅ Нова версія готова: {new_exe}")
+                logger.info("Запустіть RemoteHand.exe заново")
+                return True
+
+        logger.info(f"✅ Версія актуальна: {self.current_version}")
         return False
 
 
-# Глобальна функція для використання в main.py
 def check_and_update():
     """Функція для імпорту в main.py"""
     updater = UpdaterManager()

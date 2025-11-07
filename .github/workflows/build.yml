@@ -1,40 +1,80 @@
-name: Build and Release RemoteHand
+name: Build RemoteHand EXE
 
 on:
   push:
     tags:
-      - 'v*.*.*'
-
-permissions:
-  contents: write
+      - 'v*'
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v3
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.13'
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller==6.3.0
+        pip install pyinstaller
+        pip install python-dotenv
 
-    - name: Build executable
+    - name: Extract version from tag
+      id: version
       run: |
-        pyinstaller RemoteHand.spec
+        $tag = "${{ github.ref }}"
+        $version = $tag -replace 'refs/tags/v', ''
+        echo "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo $version | Out-File -FilePath version.txt
 
-    - name: Create Release
+    - name: Create .env file with secrets
+      run: |
+        echo "TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}" > .env
+        echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> .env
+        echo "ANYDESK_PASSWORD=${{ secrets.ANYDESK_PASSWORD }}" >> .env
+
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --onefile `
+          --windowed `
+          --icon=assets/icon.ico `
+          --add-data "src/set_anydesk_password.py;src" `
+          --add-data "version.txt;." `
+          --collect-all customtkinter `
+          --distpath dist `
+          --name RemoteHand `
+          src/main.py
+
+    - name: Create GitHub Release
+      id: create_release
       uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: dist/RemoteHand.exe
-        generate_release_notes: true
+        tag_name: ${{ github.ref }}
+        release_name: RemoteHand v${{ env.VERSION }}
+        body: |
+          # RemoteHand v${{ env.VERSION }}
+          
+          **🎉 Завантажте та запустіть RemoteHand.exe!**
+          
+          ✅ **Новості:**
+          - Автооновлення активне
+          - 🔒 Токен Telegram захищено
+          - 🚀 AnyDesk з автоматичним паролем
+          - 📌 Версія відображається в додатку
+          
+          **Інструкція:**
+          1. Завантажте RemoteHand.exe
+          2. Запустіть його
+          3. Всі оновлення завантажуватимуться автоматично
+        draft: false
+        prerelease: false
+        files: |
+          ./dist/RemoteHand.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

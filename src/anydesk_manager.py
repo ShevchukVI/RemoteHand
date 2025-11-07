@@ -129,11 +129,12 @@ class AnyDeskManager:
                 logger.error(f"Скрипт не знайдено: {script_path}")
                 return False
 
+            # Передати пароль як змінну середовища
+            env = os.environ.copy()
+            env["ANYDESK_PASSWORD"] = UNATTENDED_PASSWORD
+
             # Запустити скрипт з адмін правами
             import ctypes
-
-            # Команда для запуску Python скрипту з адмін правами
-            cmd = f'{sys.executable} "{script_path}" "{self.anydesk_path}"'
 
             ctypes.windll.shell32.ShellExecuteW(
                 None,
@@ -141,11 +142,11 @@ class AnyDeskManager:
                 sys.executable,
                 f'"{script_path}" "{self.anydesk_path}"',
                 None,
-                0  # SW_HIDE - приховане вікно
+                0  # SW_HIDE
             )
 
             logger.info(f"✅ Запрос адмін прав надіслано користувачу")
-            time.sleep(3)  # Дочекаємось завершення
+            time.sleep(3)
             return True
 
         except Exception as e:

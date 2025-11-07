@@ -4,7 +4,7 @@ import sys
 import os
 import threading
 import logging
-import socket
+from pathlib import Path
 
 # Налаштування логування
 logging.basicConfig(
@@ -56,7 +56,7 @@ class RemoteHandApp(ctk.CTk):
 
         # Налаштування вікна
         self.title(APP_NAME)
-        self.geometry("520x750")
+        self.geometry("520x800")
         self.resizable(True, True)
 
         # Встановлення теми
@@ -88,11 +88,23 @@ class RemoteHandApp(ctk.CTk):
         else:
             self.setup_ui()
 
+    def get_app_version(self):
+        """Отримати версію програми"""
+        try:
+            version_file = Path(__file__).parent.parent / "version.txt"
+            if version_file.exists():
+                return version_file.read_text(encoding='utf-8').strip()
+        except:
+            pass
+        return "1.0.0"
+
     def show_setup_wizard(self):
         """Показати вікно налаштування при першому запуску"""
         def on_setup_complete(result):
             self.config.set("store", result["store"])
             self.config.set("location", result["location"])
+            if result.get("user_name"):
+                self.config.set("user_name", result["user_name"])
             self.setup_ui()
 
         wizard = SetupWizard(self, on_setup_complete)
@@ -109,10 +121,15 @@ class RemoteHandApp(ctk.CTk):
         )
         title_label.pack(pady=15)
 
-        # Інформація про магазин/локацію
+        # Інформація про магазин/локацію + ПІБ
+        user_info = self.config.store_location_text
+        user_name = self.config.get("user_name", "")
+        if user_name:
+            user_info += f" | 👤 {user_name}"
+
         info_label = ctk.CTkLabel(
             self,
-            text=f"📍 {self.config.store_location_text}",
+            text=f"📍 {user_info}",
             font=ctk.CTkFont(size=11),
             text_color="gray"
         )
@@ -215,7 +232,7 @@ class RemoteHandApp(ctk.CTk):
 
         settings_btn = ctk.CTkButton(
             settings_frame,
-            text="⚙️ Змінити магазин/локацію",
+            text="⚙️ Змінити магазин/локацію/ПІБ",
             command=self.show_setup_wizard,
             height=35,
             font=ctk.CTkFont(size=10),
@@ -224,6 +241,26 @@ class RemoteHandApp(ctk.CTk):
             hover_color="#666666"
         )
         settings_btn.pack(fill="x")
+
+        # ==================== ВЕРСІЯ + СТАТУС ОНОВЛЕННЯ ====================
+        version_frame = ctk.CTkFrame(self)
+        version_frame.pack(anchor="se", padx=5, pady=5)
+
+        version_label = ctk.CTkLabel(
+            version_frame,
+            text=f"v{self.get_app_version()}",
+            font=ctk.CTkFont(size=8),
+            text_color="#cccccc"
+        )
+        version_label.pack(side="left", padx=2)
+
+        self.update_status_label = ctk.CTkLabel(
+            version_frame,
+            text="✅",
+            font=ctk.CTkFont(size=8),
+            text_color="#cccccc"
+        )
+        self.update_status_label.pack(side="left", padx=2)
 
     def open_rdp(self):
         """Відкрити RDP"""
