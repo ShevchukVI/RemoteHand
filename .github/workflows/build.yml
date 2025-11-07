@@ -1,49 +1,50 @@
-name: Build RemoteHand
+name: Build and Release RemoteHand
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: '3.11'
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller
+        pip install pyinstaller==6.3.0
+
+    - name: Update version.txt
+      run: |
+        $version = "${{ github.ref_name }}".TrimStart('v')
+        Set-Content -Path version.txt -Value $version
+      shell: pwsh
 
     - name: Build executable
       run: |
-        pyinstaller RemoteHand.spec
+        pyinstaller RemoteHand.spec --distpath ./dist --buildpath ./build --workpath ./build --noconfirm
+
+    - name: List dist contents
+      run: dir dist
+      shell: cmd
 
     - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/RemoteHand.exe
+        generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: RemoteHand ${{ github.ref }}
-        draft: false
-        prerelease: false
-
-    - name: Upload Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dist/RemoteHand.exe
-        asset_name: RemoteHand.exe
-        asset_content_type: application/octet-stream

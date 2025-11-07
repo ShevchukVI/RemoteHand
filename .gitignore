@@ -43,3 +43,10 @@ Thumbs.db
 *.lock
 update.bat
 RemoteHand_new.exe
+
+# Git utilities
+GitCommitTool.py
+
+# Telegram & RDP
+bot_config.json
+*.rdp

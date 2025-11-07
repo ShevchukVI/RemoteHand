@@ -1,4 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
+import sys
+from pathlib import Path
 
 block_cipher = None
 
@@ -6,8 +8,16 @@ a = Analysis(
     ['src/main.py'],
     pathex=[],
     binaries=[],
-    datas=[('version.txt', '.')],
-    hiddenimports=['customtkinter', 'PIL', 'requests'],
+    datas=[
+        ('version.txt', '.'),
+    ],
+    hiddenimports=[
+        'customtkinter',
+        'PIL',
+        'PIL._tkinter_finder',
+        'requests',
+        'psutil',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -40,5 +50,4 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='assets/icon.ico'
 )
