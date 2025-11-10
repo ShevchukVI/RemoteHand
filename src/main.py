@@ -274,7 +274,7 @@ class RemoteHandApp(ctk.CTk):
 
         rdp_btn = ctk.CTkButton(
             rdp_frame,
-            text="🖥️ Відкрити 1С (RDP)",
+            text="🖥️Відкрити 1С",
             command=self.open_rdp,
             height=50,
             font=ctk.CTkFont(size=12, weight="bold"),
