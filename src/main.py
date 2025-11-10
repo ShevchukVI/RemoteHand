@@ -1,72 +1,98 @@
-import customtkinter as ctk
-from tkinter import messagebox
 import sys
 import os
-import threading
 import logging
 from pathlib import Path
+from datetime import datetime
+import customtkinter as ctk
+from tkinter import messagebox
+import threading
 import ctypes
 import subprocess
 import time
 
-# (ВИПРАВЛЕНО) Імпорт та налаштування шляхів
+# ✅ НАЛАШТУВАННЯ ЛОГУВАННЯ В ФАЙЛ (НА ПОЧАТКУ!)
+if getattr(sys, 'frozen', False):
+    # EXE режим - логи поруч з exe
+    log_dir = Path(sys.executable).parent / "logs"
+else:
+    # DEV режим
+    log_dir = Path(__file__).parent.parent / "logs"
+
+log_dir.mkdir(exist_ok=True)
+
+# Створити лог файл з датою та часом
+log_file = log_dir / f"RemoteHand_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+# Налаштувати логування
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    handlers=[
+        logging.FileHandler(log_file, encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+logger = logging.getLogger(__name__)
+logger.info(f"📝 Лог файл створено: {log_file}")
+logger.info(f"🚀 Запуск RemoteHand...")
+
+# Видалити старі логи (старше 7 днів)
+try:
+    current_time = time.time()
+    for old_log in log_dir.glob("RemoteHand_*.log"):
+        if current_time - old_log.stat().st_mtime > 7 * 24 * 3600:
+            old_log.unlink()
+            logger.info(f"🗑️ Видалено старий лог: {old_log.name}")
+except Exception as e:
+    logger.warning(f"⚠️ Не вдалося видалити старі логи: {e}")
+
+# Завантажити .env файл
 from dotenv import load_dotenv
 
 
 def get_resource_path(relative_path):
-    """ (ОНОВЛЕНО) Отримати коректний шлях до ресурсу (для .exe та DEV) """
+    """Отримати коректний шлях до ресурсу (для .exe та DEV)"""
     try:
-        # PyInstaller створює тимчасову папку _MEIPASS
-        # для ресурсів, що *всередині* .exe
         base_path = Path(sys._MEIPASS)
     except Exception:
-        # В DEV-режимі _MEIPASS не існує, беремо корінь проєкту
-        # Або для .exe шукаємо *поруч* з ним
         if getattr(sys, 'frozen', False):
-            # Якщо запущено як .exe, шукаємо поруч з .exe
             base_path = Path(sys.executable).parent
         else:
-            # Якщо запущено як .py (dev_run.py), шукаємо звідки запущено
             base_path = Path.cwd()
     return base_path / relative_path
 
 
 # ============ ПЕРЕВІРКА DEV РЕЖИМУ ============
 DEV_MODE = os.getenv('REMOTEHAND_DEV_MODE') == '1'
+logger.info(f"{'🔧 DEV РЕЖИМ' if DEV_MODE else '✅ PRODUCTION РЕЖИМ'}")
 
-# (ВИПРАВЛЕНО) Завантажуємо .env ТІЛЬКИ в DEV-режимі
+# Завантажуємо .env
 if DEV_MODE:
-    # dev_run.py встановлює CWD в корінь проєкту, тому .env знайдеться
     env_path = get_resource_path(".env")
     if env_path.exists():
         load_dotenv(dotenv_path=env_path)
-        print(f"🔧 DEV: Завантажено .env файл з {env_path}")
+        logger.info(f"🔧 DEV: Завантажено .env файл з {env_path}")
     else:
-        print(f"⚠️ DEV: .env файл не знайдено за шляхом {env_path}, сподіваємось на системні змінні.")
-
-# Налаштування логування
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-logger.info(f"{'🔧 DEV РЕЖИM' if DEV_MODE else '✅ PRODUCTION РЕЖИМ'}")
+        logger.warning(f"⚠️ DEV: .env файл не знайдено за шляхом {env_path}")
+else:
+    # PRODUCTION - .env вбудований в EXE
+    env_path = get_resource_path(".env")
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+        logger.info(f"✅ PROD: Завантажено .env з {env_path}")
 
 # ============ ОНОВЛЕННЯ (ТІЛЬКИ В PROD) ============
 if not DEV_MODE:
     try:
         from updater import check_and_update
 
-        # Ця функція тепер надійно оновить програму
         check_and_update()
     except Exception as e:
         logger.warning(f"Помилка перевірки оновлень: {e}")
 
 # ============ ІМПОРТИ ============
-# (ВАЖЛИВО) Ці імпорти мають бути ПІСЛЯ налаштування DEV_MODE
 from utils import close_all_rdp_sessions, test_connection
-# (ВИПРАВЛЕНО) Імпортуємо токени з config, де вони ВЖЕ взяті з os.getenv()
 from config import RDP_HOST, RDP_PORT, PING_HOST, APP_NAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 from config_manager import ConfigManager
 from telegram_api import TelegramAPI
@@ -89,7 +115,7 @@ except ImportError as e:
     anydesk_available = False
     logger.warning(f"anydesk_manager не доступна: {e}")
 
-# (ПОКРАЩЕННЯ) Налаштування стилю iOS
+# ============ iOS СТИЛЬ ============
 IOS_BG_COLOR = "#f2f2f7"
 IOS_CARD_COLOR = "#ffffff"
 IOS_TEXT_COLOR = "#000000"
@@ -101,9 +127,8 @@ IOS_BUTTON_RADIUS = 12
 
 class RemoteHandApp(ctk.CTk):
 
-    # (ОНОВЛЕНО) get_resource_path тепер метод класу
     def get_resource_path(self, relative_path):
-        """ Отримати коректний шлях до ресурсу (для .exe та DEV) """
+        """Отримати коректний шлях до ресурсу"""
         try:
             base_path = Path(sys._MEIPASS)
         except Exception:
@@ -125,23 +150,22 @@ class RemoteHandApp(ctk.CTk):
         ctk.set_default_color_theme("blue")
         self.configure(fg_color=IOS_BG_COLOR)
 
-        # (ПОКРАЩЕННЯ) Встановлення іконки
+        # Встановлення іконки
         try:
             icon_path = self.get_resource_path("assets/icon.ico")
             if icon_path.exists():
                 self.iconbitmap(icon_path)
-                logger.info(f"Іконку успішно завантажено з: {icon_path}")
+                logger.info(f"✅ Іконку завантажено з: {icon_path}")
             else:
-                logger.warning(f"Іконку не знайдено за шляхом: {icon_path}")
+                logger.warning(f"⚠️ Іконку не знайдено: {icon_path}")
         except Exception as e:
-            logger.error(f"Помилка встановлення іконки: {e}")
+            logger.error(f"❌ Помилка встановлення іконки: {e}")
 
         # Ініціалізація менеджерів
         self.config = ConfigManager()
 
-        # (ВИПРАВЛЕНО) Токени ВЖЕ завантажені з config
-        logger.info(f"Telegram token: {'✅ встановлено' if TELEGRAM_TOKEN else '❌ НЕ ВСТАНОВЛЕНО!'}")
-        logger.info(f"Telegram chat_id: {'✅ встановлено' if TELEGRAM_CHAT_ID else '❌ НЕ ВСТАНОВЛЕНО!'}")
+        logger.info(f"Telegram token: {'✅ встановлено' if TELEGRAM_TOKEN else '❌ НЕ встановлено'}")
+        logger.info(f"Telegram chat_id: {'✅ встановлено' if TELEGRAM_CHAT_ID else '❌ НЕ встановлено'}")
 
         self.telegram = TelegramAPI(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
 
@@ -157,7 +181,7 @@ class RemoteHandApp(ctk.CTk):
 
         self.network_test = NetworkTest(self.config, self.telegram)
 
-        self.setup_ui()  # (ПОКРАЩЕННЯ) Використовуємо iOS-подібний UI
+        self.setup_ui()
 
         if self.config.is_first_run():
             self.show_setup_wizard()
@@ -176,8 +200,8 @@ class RemoteHandApp(ctk.CTk):
 
             if version_file.exists():
                 version = version_file.read_text(encoding='utf-8-sig').strip()
-                # Прибрати всі непотрібні символи
                 version = re.sub(r'[^0-9.]', '', version)
+                logger.info(f"📌 Версія програми: {version}")
                 return version if version else "1.0.0"
         except Exception as e:
             logger.error(f"Помилка читання версії: {e}")
@@ -185,7 +209,7 @@ class RemoteHandApp(ctk.CTk):
         return "1.0.0"
 
     def show_setup_wizard(self):
-        """Показати вікно налаштування при першому запуску"""
+        """Показати вікно налаштування"""
 
         def on_setup_complete(result):
             self.config.set("store", result["store"])
@@ -198,16 +222,15 @@ class RemoteHandApp(ctk.CTk):
         self.wait_window(wizard)
 
     def refresh_ui(self):
-        """Оновити UI після налаштування"""
+        """Оновити UI"""
         user_info = self.config.store_location_text
         user_name = self.config.get("user_name", "")
         if user_name:
             user_info += f" | 👤 {user_name}"
         self.info_label.configure(text=f"📍 {user_info}")
 
-    # (ПОКРАЩЕННЯ) Повністю замінений UI з версії ...151306
     def setup_ui(self):
-        """Створення UI в стилі iOS (компактно)"""
+        """Створення UI в стилі iOS"""
 
         # Заголовок
         title_label = ctk.CTkLabel(
@@ -218,7 +241,7 @@ class RemoteHandApp(ctk.CTk):
         )
         title_label.pack(pady=(10, 0), padx=20, anchor="w")
 
-        # Інформація про магазин/локацію + ПІБ
+        # Інформація
         user_info = self.config.store_location_text
         user_name = self.config.get("user_name", "")
         if user_name:
@@ -232,7 +255,7 @@ class RemoteHandApp(ctk.CTk):
         )
         self.info_label.pack(pady=(0, 15), padx=20, anchor="w")
 
-        # ==================== RDP БЛОК (КАРТКА 1) ====================
+        # ==================== RDP КАРТКА ====================
         rdp_frame = ctk.CTkFrame(
             self,
             fg_color=IOS_CARD_COLOR,
@@ -261,7 +284,7 @@ class RemoteHandApp(ctk.CTk):
         )
         rdp_btn.pack(fill="x", pady=(0, 15), padx=15)
 
-        # ==================== ANYDESK БЛОК (КАРТКА 2) ====================
+        # ==================== ANYDESK КАРТКА ====================
         if anydesk_available:
             anydesk_frame = ctk.CTkFrame(
                 self,
@@ -291,7 +314,7 @@ class RemoteHandApp(ctk.CTk):
             )
             anydesk_btn.pack(fill="x", pady=(0, 15), padx=15)
 
-        # ==================== ДІАГНОСТИКА (КАРТКА 3) ====================
+        # ==================== ДІАГНОСТИКА КАРТКА ====================
         test_frame = ctk.CTkFrame(
             self,
             fg_color=IOS_CARD_COLOR,
@@ -336,7 +359,7 @@ class RemoteHandApp(ctk.CTk):
         )
         close_sessions_btn.pack(fill="x", pady=(10, 15), padx=15)
 
-        # ==================== НАЛАШТУВАННЯ (КАРТКА 4) ====================
+        # ==================== НАЛАШТУВАННЯ КАРТКА ====================
         settings_frame = ctk.CTkFrame(
             self,
             fg_color=IOS_CARD_COLOR,
@@ -358,7 +381,7 @@ class RemoteHandApp(ctk.CTk):
         )
         settings_btn.pack(fill="x", pady=15, padx=15)
 
-        # ==================== СТАТУС (Внизу) ====================
+        # ==================== СТАТУС ====================
         self.status_label = ctk.CTkLabel(
             self,
             text="✅ Готово до роботи",
@@ -367,7 +390,7 @@ class RemoteHandApp(ctk.CTk):
         )
         self.status_label.pack(pady=8)
 
-        # ==================== ВЕРСІЯ (Внизу) ====================
+        # ==================== ВЕРСІЯ ====================
         version_frame = ctk.CTkFrame(self, fg_color="transparent")
         version_frame.pack(anchor="s", pady=(0, 8))
 
@@ -437,7 +460,7 @@ class RemoteHandApp(ctk.CTk):
             self.set_status("✅ Всі сесії закрито", "success")
 
     def start_anydesk(self):
-        """Запустити AnyDesk - БЕЗ показу пароля!"""
+        """Запустити AnyDesk"""
         if not self.anydesk_manager:
             messagebox.showerror("Помилка", "AnyDesk менеджер не доступен")
             return
@@ -497,14 +520,9 @@ class RemoteHandApp(ctk.CTk):
 
 def run_password_setter(anydesk_path, password):
     """
-    (ОНОВЛЕНО)
-    Ця функція виконує логіку з set_anydesk_password.py.
-    Вона запускається ТІЛЬКИ коли програма запущена з адмін правами
-    та аргументом --set-anydesk-password.
-    СТВОРЮЄ ФАЙЛ-ПРАПОРЕЦЬ ПІСЛЯ ЗАВЕРШЕННЯ.
+    Встановлення пароля AnyDesk в адмін режимі
+    Створює прапорець після завершення
     """
-
-    # (ОНОВЛЕНО) Використовуємо C:\ProgramData - спільну папку
     FLAG_FILE_PATH = Path(os.environ.get("PROGRAMDATA", "C:/")) / ".rh_pass_set_flag"
 
     logger.info(f"[*] Запуск в режимі встановлення пароля для: {anydesk_path}")
@@ -546,13 +564,13 @@ def run_password_setter(anydesk_path, password):
             logger.error(f"[STDOUT] {result.stdout}")
             logger.error(f"[STDERR] {result.stderr}")
 
-        # (ОНОВЛЕНО) Створюємо прапорець, що робота виконана
+        # Створюємо прапорець
         try:
             with open(FLAG_FILE_PATH, 'w') as f:
                 f.write('ok')
-            logger.info(f"Створено прапорець: {FLAG_FILE_PATH}")
+            logger.info(f"✅ Створено прапорець: {FLAG_FILE_PATH}")
         except Exception as e:
-            logger.error(f"Не вдалося створити прапорець: {e}")
+            logger.error(f"❌ Не вдалося створити прапорець: {e}")
 
         sys.exit(0)
 
@@ -563,7 +581,7 @@ def run_password_setter(anydesk_path, password):
 
 def main():
     """Головна функція"""
-    # (ОНОВЛЕНО) Ця логіка тепер обробляє запуск адмін-частини AnyDesk
+    # Обробка адмін-режиму для AnyDesk
     if len(sys.argv) > 1 and sys.argv[1] == '--set-anydesk-password':
         try:
             anydesk_path = sys.argv[2] if len(sys.argv) > 2 else None
@@ -572,11 +590,23 @@ def main():
         except Exception as e:
             logger.error(f"Помилка запуску password_setter: {e}")
             sys.exit(1)
-        sys.exit(0)  # Важливо вийти після виконання
+        sys.exit(0)
 
-    logger.info("Запуск RemoteHand...")
-    app = RemoteHandApp()
-    app.mainloop()
+    # Звичайний запуск
+    try:
+        logger.info("=" * 60)
+        logger.info("ЗАПУСК REMOTEHAND")
+        logger.info("=" * 60)
+
+        app = RemoteHandApp()
+        app.mainloop()
+
+        logger.info("=" * 60)
+        logger.info("REMOTEHAND ЗАВЕРШЕНО")
+        logger.info("=" * 60)
+    except Exception as e:
+        logger.error(f"КРИТИЧНА ПОМИЛКА: {e}", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":
