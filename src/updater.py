@@ -28,10 +28,13 @@ class UpdaterManager:
 
     def get_current_version(self):
         """Отримати поточну версію"""
-        if self.version_file.exists():
+        # (НОВЕ) Використовуємо get_resource_path для коректного шляху
+        version_file = self.get_resource_path("version.txt")
+
+        if version_file.exists():
             try:
                 # Спробувати UTF-8-SIG (стандарт з BOM)
-                return self.version_file.read_text(encoding='utf-8-sig').strip()
+                return version_file.read_text(encoding='utf-8-sig').strip()
             except UnicodeDecodeError:
                 try:
                     # Якщо не вийшло (byte 0xff), спробувати UTF-16
@@ -42,6 +45,17 @@ class UpdaterManager:
                 pass  # Перейдемо до fallback
 
         return "1.0.0"  # Fallback
+
+    def get_resource_path(self, relative_path):
+        """ (НОВЕ) Отримати коректний шлях до ресурсу (для .exe та DEV) """
+        try:
+            # PyInstaller створює тимчасову папку _MEIPASS
+            base_path = Path(sys._MEIPASS)
+        except Exception:
+            # В DEV-режимі _MEIPASS не існує, беремо корінь проєкту
+            base_path = Path.cwd()
+
+        return base_path / relative_path
 
     def get_latest_version(self):
         """Отримати найновішу версію з GitHub"""
@@ -92,31 +106,28 @@ class UpdaterManager:
             logger.error(f"❌ Помилка завантаження: {e}")
             return None
 
-    def run_update_batch(self, new_exe_path: Path):
+    def run_update_vbs_bat(self, new_exe_path: Path):
         """
-        (ОНОВЛЕНО)
-        Створює та запускає .bat файл, який примусово
-        вбиває старий процес перед заміною.
+        (РАДИКАЛЬНО НОВИЙ МЕТОД: PY -> VBS -> BAT)
+        Створює та запускає .bat через .vbs для 100% надійної заміни файлу.
         """
         if not self.current_exe_path:
-            logger.warning("Не можу запустити .bat в DEV режимі.")
+            logger.warning("Не можу запустити оновлення в DEV режимі.")
             return
 
         bat_path = self.app_dir / "update.bat"
+        vbs_path = self.app_dir / "update.vbs"
         current_exe_name = self.current_exe_path.name
         new_exe_name = new_exe_path.name
 
-        # (НОВА ЛОГІКА .BAT)
-        # TASKKILL - Примусово вбиває заблокований процес
-        # TIMEOUT /T 5 - Надійне очікування 5 секунд
-        # MOVE /Y - Атомна заміна файлу
-        # (goto) 2>nul & del "%~f0" - Надійний трюк для самовидалення
+        # --- Створюємо .BAT файл ---
+        # (ОНОВЛЕНО) Надійна логіка з TASKKILL, ping та MOVE
         bat_content = f"""@ECHO OFF
 TITLE Оновлення RemoteHand...
 ECHO Закриваю попередню версію (TASKKILL)...
 TASKKILL /F /IM "{current_exe_name}" > nul
 ECHO Чекаю 5 секунд, поки процес завершиться...
-TIMEOUT /T 5 /NOBREAK > nul
+ping 127.0.0.1 -n 6 > nul
 
 ECHO Оновлюю файл...
 MOVE /Y "{new_exe_name}" "{current_exe_name}"
@@ -124,29 +135,49 @@ MOVE /Y "{new_exe_name}" "{current_exe_name}"
 ECHO Запускаю оновлену версію...
 START "" "{current_exe_name}"
 
-REM Самовидалення
+ECHO Видаляю допоміжні файли...
+DEL "{vbs_path.name}"
 (goto) 2>nul & del "%~f0"
 """
         try:
             with open(bat_path, "w", encoding='cp866') as f:
                 f.write(bat_content)
-
             logger.info(f"✅ Створено update.bat")
+        except Exception as e:
+            logger.error(f"❌ Помилка створення update.bat: {e}")
+            return
 
-            # Запускаємо .bat і від'єднуємо його від нашого процесу
+        # --- Створюємо .VBS файл ---
+        # WshShell.Run "update.bat", 0, False
+        # 0 = Невидиме вікно
+        # False = Не чекати завершення
+        vbs_content = f"""
+Set WshShell = CreateObject("WScript.Shell")
+WshShell.Run "cmd /C {bat_path.name}", 0, False
+"""
+        try:
+            with open(vbs_path, "w", encoding='utf-8') as f:
+                f.write(vbs_content)
+            logger.info(f"✅ Створено update.vbs")
+        except Exception as e:
+            logger.error(f"❌ Помилка створення update.vbs: {e}")
+            return
+
+        # --- Запускаємо VBScript і закриваємось ---
+        try:
+            logger.info(f"🔄 Запускаю update.vbs та завершую роботу...")
+            # Запускаємо VBScript через wscript.exe, щоб він був 100% від'єднаний
             subprocess.Popen(
-                [str(bat_path)],
+                ['wscript.exe', str(vbs_path)],
                 creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
                 close_fds=True,
-                shell=True
+                shell=False
             )
-            logger.info(f"🔄 Запущено update.bat. Завершую роботу...")
 
             # Негайно закриваємо поточну програму
             sys.exit(0)
-
         except Exception as e:
-            logger.error(f"❌ Помилка створення/запуску update.bat: {e}")
+            logger.error(f"❌ Помилка запуску wscript.exe: {e}")
 
     def check_and_update(self):
         """Перевірити та встановити оновлення"""
@@ -171,7 +202,8 @@ REM Самовидалення
 
             if new_exe and new_exe.exists():
                 logger.info(f"✅ Нова версія готова!")
-                self.run_update_batch(new_exe)
+                # (ОНОВЛЕНО) Використовуємо новий VBS->BAT метод
+                self.run_update_vbs_bat(new_exe)
                 return True
             else:
                 logger.error("❌ Не вдалося завантажити оновлення.")

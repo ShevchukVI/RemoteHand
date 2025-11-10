@@ -135,7 +135,7 @@ class RemoteHandApp(ctk.CTk):
             self.show_setup_wizard()
 
     def get_app_version(self):
-        """(ОНОВЛЕНО) Отримати версію програми (з обробкою кодувань)"""
+        """Отримати версію програми (з обробкою кодувань)"""
         try:
             # (НОВЕ) Використовуємо хелпер
             version_file = self.get_resource_path("version.txt")
