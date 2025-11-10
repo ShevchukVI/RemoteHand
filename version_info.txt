@@ -20,7 +20,7 @@ VSVersionInfo(
             StringStruct(u'LegalCopyright', u'Copyright © 2025'),
             StringStruct(u'OriginalFilename', u'RemoteHand.exe'),
             StringStruct(u'ProductName', u'RemoteHand'),
-            StringStruct(u'ProductVersion', u'1.0.11')
+            StringStruct(u'ProductVersion', u'1.0.18')
           ]
         )
       ]
