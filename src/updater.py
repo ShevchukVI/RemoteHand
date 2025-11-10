@@ -17,11 +17,21 @@ class UpdaterManager:
         if getattr(sys, 'frozen', False):
             self.current_exe_path = Path(sys.executable)
             self.app_dir = self.current_exe_path.parent
+
+            # ✅ ШУКАТИ version.txt В _MEIPASS (всередині EXE)
+            version_in_meipass = Path(sys._MEIPASS) / "version.txt"
+            if version_in_meipass.exists():
+                self.version_file = version_in_meipass
+                logger.info(f"✅ version.txt знайдено в _MEIPASS: {self.version_file}")
+            else:
+                # Fallback - поруч з EXE
+                self.version_file = self.app_dir / "version.txt"
+                logger.warning(f"⚠️ version.txt НЕ в _MEIPASS, шукаю поруч з EXE: {self.version_file}")
         else:
             self.current_exe_path = None
             self.app_dir = Path.cwd()
+            self.version_file = self.app_dir / "version.txt"
 
-        self.version_file = self.app_dir / "version.txt"
         self.current_version = self.get_current_version()
 
     def get_current_version(self):
@@ -36,7 +46,7 @@ class UpdaterManager:
             except Exception as e:
                 logger.error(f"Помилка читання версії: {e}")
 
-        logger.warning("⚠️ version.txt не знайдено, використовую 1.0.0")
+        logger.warning(f"⚠️ version.txt не знайдено за шляхом {self.version_file}, використовую 1.0.0")
         return "1.0.0"
 
     def get_latest_version(self):
@@ -55,7 +65,7 @@ class UpdaterManager:
             return None
 
     def compare_versions(self, current, latest):
-        """Порівняти версії - повертає True тільки якщо latest СТРОГО БІЛЬША за current"""
+        """Порівняти версії"""
         try:
             from packaging.version import parse
             result = parse(latest) > parse(current)
@@ -67,7 +77,6 @@ class UpdaterManager:
                 current_parts = [int(x) for x in current.split('.')]
                 latest_parts = [int(x) for x in latest.split('.')]
 
-                # Додати нулі якщо довжини різні
                 while len(current_parts) < len(latest_parts):
                     current_parts.append(0)
                 while len(latest_parts) < len(current_parts):
@@ -109,7 +118,6 @@ class UpdaterManager:
 
                     if total_size > 0:
                         progress = (downloaded / total_size) * 100
-                        # Логувати кожні 10%
                         if progress - last_logged_progress >= 10:
                             logger.info(f"   Завантажено: {progress:.1f}%")
                             last_logged_progress = progress
@@ -136,6 +144,7 @@ class UpdaterManager:
         logger.info(f"   Старий файл: {current_exe_abs}")
         logger.info(f"   Новий файл: {new_exe_abs}")
 
+        # ✅ ВИПРАВЛЕНИЙ PowerShell скрипт (всі дужки на місці!)
         ps1_content = f"""# RemoteHand Auto-Update Script
 $logFile = "{log_file}"
 $ErrorActionPreference = "Continue"
@@ -178,14 +187,14 @@ try {{
     }}
 
     Move-Item "{new_exe_abs}" "{current_exe_abs}" -Force
-    Write-Log "   ✓ File replaced successfully!"
+    Write-Log "   File replaced successfully!"
 
     if (Test-Path $backupPath) {{
         Remove-Item $backupPath -Force
         Write-Log "   Backup removed"
     }}
 }} catch {{
-    Write-Log "   ✗ Error replacing file: $_"
+    Write-Log "   Error replacing file: $_"
 
     if (Test-Path $backupPath) {{
         Write-Log "   Restoring from backup..."
@@ -203,7 +212,7 @@ Start-Process "{current_exe_abs}"
 Write-Log "   RemoteHand started"
 
 Write-Log ""
-Write-Log "✓ Update complete!"
+Write-Log "Update complete!"
 Write-Log "This window will close in 3 seconds..."
 Start-Sleep -Seconds 3
 
