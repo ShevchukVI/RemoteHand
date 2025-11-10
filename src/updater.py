@@ -16,13 +16,10 @@ class UpdaterManager:
     GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
     def __init__(self):
-        # (ОНОВЛЕНО) Визначаємо шляхи для .exe
         if getattr(sys, 'frozen', False):
-            # Режим EXE
             self.current_exe_path = Path(sys.executable)
             self.app_dir = self.current_exe_path.parent
         else:
-            # Режим DEV
             self.current_exe_path = None
             self.app_dir = Path(__file__).parent.parent
 
@@ -33,11 +30,18 @@ class UpdaterManager:
         """Отримати поточну версію"""
         if self.version_file.exists():
             try:
-                with open(self.version_file, 'r', encoding='utf-8') as f:
-                    return f.read().strip()
-            except:
-                pass
-        return "1.0.0"
+                # Спробувати UTF-8-SIG (стандарт з BOM)
+                return self.version_file.read_text(encoding='utf-8-sig').strip()
+            except UnicodeDecodeError:
+                try:
+                    # Якщо не вийшло (byte 0xff), спробувати UTF-16
+                    return self.version_file.read_text(encoding='utf-16').strip()
+                except Exception:
+                    pass  # Перейдемо до fallback
+            except Exception:
+                pass  # Перейдемо до fallback
+
+        return "1.0.0"  # Fallback
 
     def get_latest_version(self):
         """Отримати найновішу версію з GitHub"""
@@ -57,7 +61,6 @@ class UpdaterManager:
             from packaging.version import parse
             return parse(latest) > parse(current)
         except ImportError:
-            # Fallback для простого порівняння, якщо packaging не встановлено
             try:
                 current_parts = [int(x) for x in current.split('.')]
                 latest_parts = [int(x) for x in latest.split('.')]
@@ -76,7 +79,6 @@ class UpdaterManager:
             response = requests.get(download_url, timeout=60, stream=True)
             response.raise_for_status()
 
-            # (ОНОВЛЕНО) Зберігаємо як _new.exe
             new_exe_path = self.app_dir / "RemoteHand_new.exe"
 
             with open(new_exe_path, 'wb') as f:
@@ -93,7 +95,8 @@ class UpdaterManager:
     def run_update_batch(self, new_exe_path: Path):
         """
         (ОНОВЛЕНО)
-        Створює та запускає .bat файл для заміни .exe
+        Створює та запускає .bat файл, який примусово
+        вбиває старий процес перед заміною.
         """
         if not self.current_exe_path:
             logger.warning("Не можу запустити .bat в DEV режимі.")
@@ -103,20 +106,26 @@ class UpdaterManager:
         current_exe_name = self.current_exe_path.name
         new_exe_name = new_exe_path.name
 
-        # (ОНОВЛЕНА ЛОГІКА .BAT)
-        # TIMEOUT /T 5 - Збільшено час очікування до 5 сек
-        # MOVE /Y - Надійно замінює старий файл новим
-        # (GOTO) 2>NUL & DEL "%~f0" - Трюк для самовидалення .bat файлу
+        # (НОВА ЛОГІКА .BAT)
+        # TASKKILL - Примусово вбиває заблокований процес
+        # ping (замість TIMEOUT) - надійне очікування
+        # MOVE /Y - Атомна заміна файлу
+        # (goto) 2>nul & del "%~f0" - Надійний трюк для самовидалення
         bat_content = f"""@ECHO OFF
 TITLE Оновлення RemoteHand...
-ECHO Чекаю, поки програма закриється...
-TIMEOUT /T 5 /NOBREAK
+ECHO Закриваю попередню версію (TASKKILL)...
+TASKKILL /F /IM "{current_exe_name}" > nul
+ECHO Чекаю 3 секунди...
+ping 127.0.0.1 -n 4 > nul
+
 ECHO Оновлюю файл...
 MOVE /Y "{new_exe_name}" "{current_exe_name}"
+
 ECHO Запускаю оновлену версію...
 START "" "{current_exe_name}"
-ECHO Видаляю тимчасові файли...
-(GOTO) 2>NUL & DEL "%~f0"
+
+REM Самовидалення
+(goto) 2>nul & del "%~f0"
 """
         try:
             with open(bat_path, "w", encoding='cp866') as f:
@@ -124,7 +133,7 @@ ECHO Видаляю тимчасові файли...
 
             logger.info(f"✅ Створено update.bat")
 
-            # (ОНОВЛЕНО) Додано shell=True для надійнішого запуску .bat
+            # Запускаємо .bat і від'єднуємо його від нашого процесу
             subprocess.Popen(
                 [str(bat_path)],
                 creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
@@ -141,7 +150,6 @@ ECHO Видаляю тимчасові файли...
 
     def check_and_update(self):
         """Перевірити та встановити оновлення"""
-        # НЕ оновлювати в DEV режимі!
         if os.getenv('REMOTEHAND_DEV_MODE') == '1' or not getattr(sys, 'frozen', False):
             logger.info("🔧 DEV режим - пропускаємо оновлення")
             return False
@@ -159,14 +167,12 @@ ECHO Видаляю тимчасові файли...
         if self.compare_versions(self.current_version, latest_version):
             logger.info(f"📦 Доступне оновлення: {latest_version}")
 
-            # Завантажити нову версію
             new_exe = self.download_update(latest_version)
 
             if new_exe and new_exe.exists():
                 logger.info(f"✅ Нова версія готова!")
-                # (ОНОВЛЕНО) Запускаємо .bat замість прямого запуску
                 self.run_update_batch(new_exe)
-                return True  # Хоча програма вже вийде
+                return True
             else:
                 logger.error("❌ Не вдалося завантажити оновлення.")
 

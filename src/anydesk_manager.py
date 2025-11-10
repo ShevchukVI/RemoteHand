@@ -116,7 +116,6 @@ class AnyDeskManager:
 
     def set_password_with_admin(self) -> bool:
         """
-        (ОНОВЛЕНО)
         Запускає *саму себе* з адмін правами для встановлення пароля.
         Коректно обробляє DEV-режим.
         """
@@ -131,7 +130,6 @@ class AnyDeskManager:
             env = os.environ.copy()
             env["ANYDESK_PASSWORD"] = UNATTENDED_PASSWORD
 
-            # (НОВЕ) Визначаємо, як запускати: .EXE чи .PY
             if getattr(sys, 'frozen', False):
                 # Режим EXE: запускаємо сам .exe
                 executable = sys.executable
@@ -140,7 +138,6 @@ class AnyDeskManager:
             else:
                 # Режим DEV: запускаємо python.exe + [скрипт] + [аргументи]
                 executable = sys.executable  # python.exe
-                # sys.argv[0] - це скрипт, який був запущений (напр. dev_run.py)
                 script_path = os.path.abspath(sys.argv[0])
                 arguments = f'"{script_path}" --set-anydesk-password "{self.anydesk_path}"'
                 logger.info(f"DEV Mode Admin Lauch: {executable} {arguments}")
@@ -156,7 +153,6 @@ class AnyDeskManager:
             )
 
             logger.info(f"✅ Запрос адмін прав надіслано користувачу")
-            time.sleep(3)
             return True
 
         except Exception as e:
@@ -194,23 +190,19 @@ class AnyDeskManager:
         return None
 
     def start(self, password: str = None) -> Tuple[Optional[str], Optional[str]]:
-        """Запустити AnyDesk"""
+        """(ОНОВЛЕНО) Запустити AnyDesk з очікуванням адмін-процесу"""
         password = UNATTENDED_PASSWORD
 
-        # Крок 1: Якщо вже запущено
+        # Крок 1: Якщо вже запущено (нічого не змінилось)
         if self.check_if_running():
             logger.info("AnyDesk вже запущено")
             connection_id = self.get_connection_id()
             if connection_id:
                 try:
                     user_name = self.config.get("user_name", "")
-
                     self.telegram.send_anydesk_info(
                         self.config.store_location_text,
-                        user_name,
-                        socket.gethostname(),
-                        connection_id,
-                        password
+                        user_name, socket.gethostname(), connection_id, password
                     )
                 except Exception as e:
                     logger.error(f"❌ Telegram: {e}")
@@ -225,30 +217,59 @@ class AnyDeskManager:
         if not self.launch_anydesk():
             return None, None
 
-        # Крок 4: ВСТАНОВИТИ ПАРОЛЬ З АДМІН ПРАВАМИ
+        # Крок 4: ВСТАНОВИТИ ПАРОЛЬ (З ОЧІКУВАННЯМ)
         logger.info("🔐 Встановлення пароля...")
-        time.sleep(2)
-        self.set_password_with_admin()
+
+        # (НОВЕ) Шлях до прапорця та очищення старого, якщо є
+        flag_file = Path(os.environ.get("TEMP", Path.home())) / ".rh_pass_set_flag"
+        if flag_file.exists():
+            try:
+                os.remove(flag_file)
+            except Exception as e:
+                logger.warning(f"Не вдалося видалити старий прапорець: {e}")
+
+        # Запускаємо адмін-процес
+        if not self.set_password_with_admin():
+            logger.error("Не вдалося запустити адмін-процес.")
+            # Пробуємо продовжити без пароля (хоча б ID)
+            pass
+
+        # (НОВЕ) Чекаємо на адмін-процес (до 30 сек)
+        logger.info("Чекаю на завершення роботи адмін-процесу (до 30 сек)...")
+        password_set = False
+        for i in range(30):
+            if flag_file.exists():
+                logger.info("✅ Адмін-процес завершив роботу.")
+                try:
+                    os.remove(flag_file)
+                except:
+                    pass
+                password_set = True
+                break
+            time.sleep(1)
+
+        if not password_set:
+            logger.warning("⚠️ Адмін-процес не відповів (timeout). Пробую продовжити...")
 
         # Крок 5: Отримати ID
         logger.info("📌 Отримання ID...")
-        time.sleep(2)
+        time.sleep(1)  # Дамо AnyDesk секунду
         connection_id = self.get_connection_id()
 
         if not connection_id:
+            logger.info("Повторна спроба отримати ID...")
             time.sleep(3)
             connection_id = self.get_connection_id()
 
-        # Крок 6: Надіслати в Telegram з ПІБ
+        # Крок 6: Надіслати в Telegram
         try:
             user_name = self.config.get("user_name", "")
-
             self.telegram.send_anydesk_info(
                 self.config.store_location_text,
                 user_name,
                 socket.gethostname(),
-                connection_id if connection_id else "не отримано",
-                password
+                connection_id if connection_id else "НЕ ОТРИМАНО",
+                password if password_set else "(НЕ ВСТАНОВЛЕНО!)"
             )
             logger.info("✅ Телеграм сповіщено")
         except Exception as e:

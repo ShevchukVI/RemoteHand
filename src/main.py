@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # ============ ПЕРЕВІРКА DEV РЕЖИМУ ============
 DEV_MODE = os.getenv('REMOTEHAND_DEV_MODE') == '1'
-logger.info(f"{'🔧 DEV РЕЖИМ' if DEV_MODE else '✅ PRODUCTION РЕЖИМ'}")
+logger.info(f"{'🔧 DEV РЕЖИM' if DEV_MODE else '✅ PRODUCTION РЕЖИМ'}")
 
 if not DEV_MODE:
     # ТІЛЬКИ В PRODUCTION
@@ -61,11 +61,11 @@ except ImportError as e:
     logger.warning(f"anydesk_manager не доступна: {e}")
 
 # ============ Налаштування стилю iOS ============
-IOS_BG_COLOR = "#f2f2f7"       # Світло-сірий фон
-IOS_CARD_COLOR = "#ffffff"      # Білі картки
-IOS_TEXT_COLOR = "#000000"      # Чорний текст
-IOS_SUBTEXT_COLOR = "#8A8A8E"   # Сірий підпис
-IOS_CARD_BORDER = "#E0E0E0"   # Ледь помітна рамка картки
+IOS_BG_COLOR = "#f2f2f7"  # Світло-сірий фон
+IOS_CARD_COLOR = "#ffffff"  # Білі картки
+IOS_TEXT_COLOR = "#000000"  # Чорний текст
+IOS_SUBTEXT_COLOR = "#8A8A8E"  # Сірий підпис
+IOS_CARD_BORDER = "#E0E0E0"  # Ледь помітна рамка картки
 IOS_CARD_RADIUS = 15
 IOS_BUTTON_RADIUS = 12
 
@@ -112,14 +112,14 @@ class RemoteHandApp(ctk.CTk):
             self.show_setup_wizard()
 
     def get_app_version(self):
-        """(ОНОВЛЕНО) Отримати версію програми (з обробкою кодувань)"""
+        """Отримати версію програми (з обробкою кодувань)"""
         try:
             if getattr(sys, 'frozen', False):
                 # Якщо EXE (скомпільовано)
                 base_path = Path(sys._MEIPASS)
             else:
                 # Якщо DEV (запуск з dev_run.py)
-                base_path = Path.cwd() # Поточна робоча директорія (корінь проєкту)
+                base_path = Path.cwd()  # Поточна робоча директорія (корінь проєкту)
 
             version_file = base_path / "version.txt"
 
@@ -128,10 +128,9 @@ class RemoteHandApp(ctk.CTk):
                 base_path = Path(sys.executable).parent
                 version_file = base_path / "version.txt"
                 if not version_file.exists():
-                     logger.warning(f"Не знайдено version.txt і у {base_path}")
-                     return "1.0.0" # Fallback
+                    logger.warning(f"Не знайдено version.txt і у {base_path}")
+                    return "1.0.0"  # Fallback
 
-            # (НОВЕ) Спроба читання з різними кодуваннями
             try:
                 # Спробувати UTF-8-SIG (стандарт з BOM)
                 return version_file.read_text(encoding='utf-8-sig').strip()
@@ -148,7 +147,7 @@ class RemoteHandApp(ctk.CTk):
         except Exception as e:
             logger.error(f"Критична помилка get_app_version: {e}")
 
-        return "1.0.0" # За замовчуванням
+        return "1.0.0"  # За замовчуванням
 
     def show_setup_wizard(self):
         """Показати вікно налаштування при першому запуску"""
@@ -423,10 +422,10 @@ class RemoteHandApp(ctk.CTk):
                         f"Пароль встановлено автоматично"
                     )
                 else:
-                    self.set_status("❌ AnyDesk вже запущено", "error")
+                    self.set_status("❌ Помилка AnyDesk", "error")
                     messagebox.showwarning(
                         "⚠️ Увага",
-                        "AnyDesk вже запущено або не вдалося запустити"
+                        "Не вдалося запустити AnyDesk або отримати ID."
                     )
             except Exception as e:
                 logger.error(f"Помилка: {e}")
@@ -463,10 +462,16 @@ class RemoteHandApp(ctk.CTk):
 
 def run_password_setter(anydesk_path, password):
     """
+    (ОНОВЛЕНО)
     Ця функція виконує логіку з set_anydesk_password.py.
     Вона запускається ТІЛЬКИ коли програма запущена з адмін правами
     та аргументом --set-anydesk-password.
+    СТВОРЮЄ ФАЙЛ-ПРАПОРЕЦЬ ПІСЛЯ ЗАВЕРШЕННЯ.
     """
+
+    # (НОВЕ) Використовуємо тимчасову папку для прапорця
+    FLAG_FILE_PATH = Path(os.environ.get("TEMP", Path.home())) / ".rh_pass_set_flag"
+
     logger.info(f"[*] Запуск в режимі встановлення пароля для: {anydesk_path}")
 
     try:
@@ -504,6 +509,14 @@ def run_password_setter(anydesk_path, password):
             logger.error(f"[!] Код помилки: {result.returncode}")
             logger.error(f"[STDOUT] {result.stdout}")
             logger.error(f"[STDERR] {result.stderr}")
+
+        # (НОВЕ) Створюємо прапорець, що робота виконана
+        try:
+            with open(FLAG_FILE_PATH, 'w') as f:
+                f.write('ok')
+            logger.info(f"Створено прапорець: {FLAG_FILE_PATH}")
+        except Exception as e:
+            logger.error(f"Не вдалося створити прапорець: {e}")
 
         sys.exit(0)
 
