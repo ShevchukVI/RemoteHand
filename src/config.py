@@ -1,9 +1,8 @@
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+# (ВИДАЛЕНО) from dotenv import load_dotenv
 
-# Завантажити .env
-load_dotenv()
+# (ВИДАЛЕНО) load_dotenv()
 
 APP_NAME = "RemoteHand"
 RDP_HOST = "23.88.7.196"

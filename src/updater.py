@@ -23,8 +23,7 @@ class UpdaterManager:
             self.current_exe_path = None
             self.app_dir = Path.cwd()  # Використовуємо Path.cwd() для DEV
 
-        # (ОНОВЛЕНО) current_version тепер викликається пізніше,
-        # бо get_resource_path потрібен екземпляр класу
+        # (ОНОВЛЕНО) current_version тепер викликається пізніше
         self.current_version = self.get_current_version()
 
     def get_resource_path(self, relative_path):
@@ -33,9 +32,11 @@ class UpdaterManager:
             # PyInstaller створює тимчасову папку _MEIPASS
             base_path = Path(sys._MEIPASS)
         except Exception:
-            # В DEV-режимі _MEIPASS не існує, беремо корінь проєкту
-            base_path = Path.cwd()
-
+            # В DEV-режимі
+            if getattr(sys, 'frozen', False):
+                base_path = Path(sys.executable).parent
+            else:
+                base_path = Path.cwd()
         return base_path / relative_path
 
     def get_current_version(self):
@@ -50,13 +51,13 @@ class UpdaterManager:
             except UnicodeDecodeError:
                 try:
                     # Якщо не вийшло (byte 0xff), спробувати UTF-16
-                    return self.version_file.read_text(encoding='utf-16').strip()
+                    return version_file.read_text(encoding='utf-16').strip()
                 except Exception:
                     pass  # Перейдемо до fallback
             except Exception:
                 pass  # Перейдемо до fallback
 
-        return "1.0.0"  # Fallback
+        return "1.0.14"  # Fallback
 
     def get_latest_version(self):
         """Отримати найновішу версію з GitHub"""
@@ -71,7 +72,7 @@ class UpdaterManager:
             return None
 
     def compare_versions(self, current, latest):
-        """Порівняти версії"""
+        """Порівняти версії (використовує packaging, якщо доступно)"""
         try:
             from packaging.version import parse
             return parse(latest) > parse(current)
@@ -109,14 +110,14 @@ class UpdaterManager:
 
     def run_update_vbs_bat(self, new_exe_path: Path):
         """
-        (РАДИКАЛЬНО НОВИЙ МЕТОД: PY -> VBS -> BAT з АБСОЛЮТНИМИ ШЛЯХАМИ)
+        (ВИПРАВЛЕНО)
         Створює та запускає .bat через .vbs для 100% надійної заміни файлу.
         """
         if not self.current_exe_path:
             logger.warning("Не можу запустити оновлення в DEV режимі.")
             return
 
-        # (ОНОВЛЕНО) Використовуємо абсолютні шляхи
+        # Використовуємо абсолютні шляхи
         bat_path = self.app_dir / "update.bat"
         vbs_path = self.app_dir / "update.vbs"
         current_exe_abs = str(self.current_exe_path.resolve())
@@ -124,7 +125,10 @@ class UpdaterManager:
         current_exe_name = self.current_exe_path.name
 
         # --- Створюємо .BAT файл ---
-        # (ОНОВЛЕНО) Всі шляхи тепер абсолютні
+        # TASKKILL - Примусово вбиває заблокований процес
+        # ping (замість TIMEOUT) - надійне очікування
+        # MOVE /Y - Атомна заміна файлу
+        # (goto) 2>nul & del "%~f0" - Надійний трюк для самовидалення
         bat_content = f"""@ECHO OFF
 TITLE Оновлення RemoteHand...
 ECHO Закриваю попередню версію (TASKKILL)...
@@ -143,6 +147,7 @@ DEL "{vbs_path.resolve()}"
 (goto) 2>nul & del "%~f0"
 """
         try:
+            # cp866 - кодування для .bat у Windows
             with open(bat_path, "w", encoding='cp866') as f:
                 f.write(bat_content)
             logger.info(f"✅ Створено update.bat")
@@ -151,7 +156,7 @@ DEL "{vbs_path.resolve()}"
             return
 
         # --- Створюємо .VBS файл ---
-        # (ОНОВЛЕНО) Шлях до .bat також абсолютний
+        # Запускає .bat "невидимо" і від'єднано
         vbs_content = f"""
 Set WshShell = CreateObject("WScript.Shell")
 WshShell.Run "cmd /C ""{bat_path.resolve()}""", 0, False
@@ -169,12 +174,10 @@ WshShell.Run "cmd /C ""{bat_path.resolve()}""", 0, False
         # --- Запускаємо VBScript і закриваємось ---
         try:
             logger.info(f"🔄 Запускаю update.vbs та завершую роботу...")
-            subprocess.Popen(
-                ['wscript.exe', str(vbs_path.resolve())],
-                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-                close_fds=True,
-                shell=False
-            )
+
+            # (ВИПРАВЛЕНО) os.startfile - найнадійніший спосіб "клікнути"
+            # на .vbs і негайно вийти
+            os.startfile(str(vbs_path.resolve()))
 
             # Негайно закриваємо поточну програму
             sys.exit(0)
@@ -210,7 +213,7 @@ WshShell.Run "cmd /C ""{bat_path.resolve()}""", 0, False
 
             if new_exe and new_exe.exists():
                 logger.info(f"✅ Нова версія готова!")
-                # (ОНОВЛЕНО) Використовуємо новий VBS->BAT метод
+                # (ВИПРАВЛЕНО) Використовуємо VBS->BAT метод
                 self.run_update_vbs_bat(new_exe) 
                 return True
             else:

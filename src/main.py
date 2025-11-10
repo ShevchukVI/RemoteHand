@@ -9,10 +9,38 @@ import ctypes
 import subprocess
 import time
 
-# Завантажити .env файл
+# (ВИПРАВЛЕНО) Завантаження .env ПЕРЕД іншими імпортами
 from dotenv import load_dotenv
 
-load_dotenv()
+
+def get_resource_path(relative_path):
+    """ (ОНОВЛЕНО) Отримати коректний шлях до ресурсу (для .exe та DEV) """
+    try:
+        # PyInstaller створює тимчасову папку _MEIPASS
+        # для ресурсів, що *всередині* .exe
+        base_path = Path(sys._MEIPASS)
+    except Exception:
+        # В DEV-режимі _MEIPASS не існує, беремо корінь проєкту
+        # Або для .exe шукаємо *поруч* з ним
+        if getattr(sys, 'frozen', False):
+            # Якщо запущено як .exe, шукаємо поруч з .exe
+            base_path = Path(sys.executable).parent
+        else:
+            # Якщо запущено як .py (dev_run.py), шукаємо звідки запущено
+            base_path = Path.cwd()
+    return base_path / relative_path
+
+
+# (ВИПРАВЛЕНО) Явно завантажуємо .env з папки програми
+env_path = get_resource_path(".env")
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+    # logger ще не ініціалізований, тому print
+    print(f"Завантажено .env файл з {env_path}")
+else:
+    print(f".env файл не знайдено за шляхом {env_path}. Використовуються системні змінні.")
+    # Спробувати знайти стандартним шляхом (наприклад, CWD)
+    load_dotenv()
 
 # Налаштування логування
 logging.basicConfig(
@@ -30,15 +58,15 @@ if not DEV_MODE:
     try:
         from updater import check_and_update
 
+        # (ВИПРАВЛЕНО) Ця функція тепер буде замінена на надійну
         check_and_update()
     except Exception as e:
         logger.warning(f"Помилка перевірки оновлень: {e}")
 
 # ============ ІМПОРТИ ============
+# (ВАЖЛИВО) Ці імпорти мають бути ПІСЛЯ load_dotenv()
 from utils import close_all_rdp_sessions, test_connection
 from config import RDP_HOST, RDP_PORT, PING_HOST, APP_NAME
-
-# Нові імпорти
 from config_manager import ConfigManager
 from telegram_api import TelegramAPI
 from setup_wizard import SetupWizard
@@ -60,7 +88,7 @@ except ImportError as e:
     anydesk_available = False
     logger.warning(f"anydesk_manager не доступна: {e}")
 
-# ============ Налаштування стилю iOS ============
+# (ПОКРАЩЕННЯ) Налаштування стилю iOS (з версії ...151306)
 IOS_BG_COLOR = "#f2f2f7"  # Світло-сірий фон
 IOS_CARD_COLOR = "#ffffff"  # Білі картки
 IOS_TEXT_COLOR = "#000000"  # Чорний текст
@@ -72,15 +100,18 @@ IOS_BUTTON_RADIUS = 12
 
 class RemoteHandApp(ctk.CTk):
 
+    # (ОНОВЛЕНО) get_resource_path тепер метод класу
     def get_resource_path(self, relative_path):
-        """ (НОВЕ) Отримати коректний шлях до ресурсу (для .exe та DEV) """
+        """ Отримати коректний шлях до ресурсу (для .exe та DEV) """
         try:
             # PyInstaller створює тимчасову папку _MEIPASS
             base_path = Path(sys._MEIPASS)
         except Exception:
-            # В DEV-режимі _MEIPASS не існує, беремо корінь проєкту
-            base_path = Path.cwd()
-
+            # В DEV-режимі
+            if getattr(sys, 'frozen', False):
+                base_path = Path(sys.executable).parent
+            else:
+                base_path = Path.cwd()
         return base_path / relative_path
 
     def __init__(self):
@@ -93,9 +124,10 @@ class RemoteHandApp(ctk.CTk):
 
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("blue")
+        # (ПОКРАЩЕННЯ) Встановлюємо фон iOS
         self.configure(fg_color=IOS_BG_COLOR)
 
-        # (ОНОВЛЕНО) Встановлення іконки
+        # (ПОКРАЩЕННЯ) Встановлення іконки
         try:
             icon_path = self.get_resource_path("assets/icon.ico")
             if icon_path.exists():
@@ -109,6 +141,7 @@ class RemoteHandApp(ctk.CTk):
         # Ініціалізація менеджерів
         self.config = ConfigManager()
 
+        # (ВИПРАВЛЕНО) Токени ВЖЕ завантажені з .env завдяки коду на початку файлу
         telegram_token = os.getenv("TELEGRAM_TOKEN") or self.config.get("telegram_token")
         telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID") or self.config.get("telegram_chat_id")
 
@@ -129,7 +162,7 @@ class RemoteHandApp(ctk.CTk):
 
         self.network_test = NetworkTest(self.config, self.telegram)
 
-        self.setup_ui()
+        self.setup_ui()  # (ПОКРАЩЕННЯ) Ця функція тепер буде замінена
 
         if self.config.is_first_run():
             self.show_setup_wizard()
@@ -137,12 +170,12 @@ class RemoteHandApp(ctk.CTk):
     def get_app_version(self):
         """Отримати версію програми (з обробкою кодувань)"""
         try:
-            # (НОВЕ) Використовуємо хелпер
+            # (ОНОВЛЕНО) Використовуємо хелпер
             version_file = self.get_resource_path("version.txt")
 
             if not version_file.exists():
                 logger.warning(f"Не знайдено version.txt у {version_file}")
-                return "1.0.0"  # Fallback
+                return "1.0.14"  # Fallback
 
             try:
                 # Спробувати UTF-8-SIG (стандарт з BOM)
@@ -160,7 +193,7 @@ class RemoteHandApp(ctk.CTk):
         except Exception as e:
             logger.error(f"Критична помилка get_app_version: {e}")
 
-        return "1.0.0"  # За замовчуванням
+        return "1.0.14"  # За замовчуванням (або версія, яку ти встановиш)
 
     def show_setup_wizard(self):
         """Показати вікно налаштування при першому запуску"""
@@ -181,9 +214,9 @@ class RemoteHandApp(ctk.CTk):
         user_name = self.config.get("user_name", "")
         if user_name:
             user_info += f" | 👤 {user_name}"
-
         self.info_label.configure(text=f"📍 {user_info}")
 
+    # (ПОКРАЩЕННЯ) Повністю замінений UI з версії ...151306
     def setup_ui(self):
         """Створення UI в стилі iOS (компактно)"""
 
@@ -364,6 +397,11 @@ class RemoteHandApp(ctk.CTk):
             text_color="green"
         )
         self.update_status_label.pack(side="left", padx=5)
+
+    #
+    # Інші методи (open_rdp, start_anydesk і т.д. залишаються ті ж самі,
+    # що і в твоїй версії ...155823.txt)
+    #
 
     def open_rdp(self):
         """Відкрити RDP"""
