@@ -71,6 +71,18 @@ IOS_BUTTON_RADIUS = 12
 
 
 class RemoteHandApp(ctk.CTk):
+
+    def get_resource_path(self, relative_path):
+        """ (НОВЕ) Отримати коректний шлях до ресурсу (для .exe та DEV) """
+        try:
+            # PyInstaller створює тимчасову папку _MEIPASS
+            base_path = Path(sys._MEIPASS)
+        except Exception:
+            # В DEV-режимі _MEIPASS не існує, беремо корінь проєкту
+            base_path = Path.cwd()
+
+        return base_path / relative_path
+
     def __init__(self):
         super().__init__()
 
@@ -82,6 +94,17 @@ class RemoteHandApp(ctk.CTk):
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("blue")
         self.configure(fg_color=IOS_BG_COLOR)
+
+        # (НОВЕ) Встановлення іконки
+        try:
+            icon_path = self.get_resource_path("assets/icon.ico")
+            if icon_path.exists():
+                self.iconbitmap(icon_path)
+                logger.info(f"Іконку успішно завантажено з: {icon_path}")
+            else:
+                logger.warning(f"Іконку не знайдено за шляхом: {icon_path}")
+        except Exception as e:
+            logger.error(f"Помилка встановлення іконки: {e}")
 
         # Ініціалізація менеджерів
         self.config = ConfigManager()
@@ -112,24 +135,14 @@ class RemoteHandApp(ctk.CTk):
             self.show_setup_wizard()
 
     def get_app_version(self):
-        """Отримати версію програми (з обробкою кодувань)"""
+        """(ОНОВЛЕНО) Отримати версію програми (з обробкою кодувань)"""
         try:
-            if getattr(sys, 'frozen', False):
-                # Якщо EXE (скомпільовано)
-                base_path = Path(sys._MEIPASS)
-            else:
-                # Якщо DEV (запуск з dev_run.py)
-                base_path = Path.cwd()  # Поточна робоча директорія (корінь проєкту)
-
-            version_file = base_path / "version.txt"
+            # (НОВЕ) Використовуємо хелпер
+            version_file = self.get_resource_path("version.txt")
 
             if not version_file.exists():
-                logger.warning(f"Не знайдено version.txt у {base_path}")
-                base_path = Path(sys.executable).parent
-                version_file = base_path / "version.txt"
-                if not version_file.exists():
-                    logger.warning(f"Не знайдено version.txt і у {base_path}")
-                    return "1.0.0"  # Fallback
+                logger.warning(f"Не знайдено version.txt у {version_file}")
+                return "1.0.0"  # Fallback
 
             try:
                 # Спробувати UTF-8-SIG (стандарт з BOM)

@@ -108,15 +108,15 @@ class UpdaterManager:
 
         # (НОВА ЛОГІКА .BAT)
         # TASKKILL - Примусово вбиває заблокований процес
-        # ping (замість TIMEOUT) - надійне очікування
+        # TIMEOUT /T 5 - Надійне очікування 5 секунд
         # MOVE /Y - Атомна заміна файлу
         # (goto) 2>nul & del "%~f0" - Надійний трюк для самовидалення
         bat_content = f"""@ECHO OFF
 TITLE Оновлення RemoteHand...
 ECHO Закриваю попередню версію (TASKKILL)...
 TASKKILL /F /IM "{current_exe_name}" > nul
-ECHO Чекаю 3 секунди...
-ping 127.0.0.1 -n 4 > nul
+ECHO Чекаю 5 секунд, поки процес завершиться...
+TIMEOUT /T 5 /NOBREAK > nul
 
 ECHO Оновлюю файл...
 MOVE /Y "{new_exe_name}" "{current_exe_name}"
