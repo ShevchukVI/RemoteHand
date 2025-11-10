@@ -9,6 +9,7 @@ a = Analysis(
     datas=[
         ('assets', 'assets'),
         ('version.txt', '.'),
+        ('.env', '.'),  # ✅ ВБУДУВАТИ .env В EXE
     ],
     hiddenimports=[
         'dotenv',

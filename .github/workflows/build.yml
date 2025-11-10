@@ -24,10 +24,13 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Create .env file with secrets
+        run: |
+          echo "TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}" > .env
+          echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> .env
+        shell: bash
+
       - name: Build EXE with PyInstaller
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           pyinstaller RemoteHand.spec
 
