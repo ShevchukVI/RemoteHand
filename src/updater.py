@@ -17,13 +17,14 @@ class UpdaterManager:
 
     def __init__(self):
         if getattr(sys, 'frozen', False):
+            # Якщо .exe, шлях до .exe
             self.current_exe_path = Path(sys.executable)
             self.app_dir = self.current_exe_path.parent
         else:
+            # Якщо .py, шлях до .exe невідомий (DEV)
             self.current_exe_path = None
             self.app_dir = Path.cwd()  # Використовуємо Path.cwd() для DEV
 
-        # (ОНОВЛЕНО) current_version тепер викликається пізніше
         self.current_version = self.get_current_version()
 
     def get_resource_path(self, relative_path):
@@ -40,8 +41,7 @@ class UpdaterManager:
         return base_path / relative_path
 
     def get_current_version(self):
-        """Отримати поточну версію"""
-        # (ОНОВЛЕНО) Використовуємо get_resource_path для коректного шляху
+        """Отримати поточну версію (з обробкою кодувань)"""
         version_file = self.get_resource_path("version.txt")
 
         if version_file.exists():
@@ -53,9 +53,9 @@ class UpdaterManager:
                     # Якщо не вийшло (byte 0xff), спробувати UTF-16
                     return version_file.read_text(encoding='utf-16').strip()
                 except Exception:
-                    pass  # Перейдемо до fallback
+                    pass
             except Exception:
-                pass  # Перейдемо до fallback
+                pass
 
         return "1.0.14"  # Fallback
 
@@ -125,10 +125,6 @@ class UpdaterManager:
         current_exe_name = self.current_exe_path.name
 
         # --- Створюємо .BAT файл ---
-        # TASKKILL - Примусово вбиває заблокований процес
-        # ping (замість TIMEOUT) - надійне очікування
-        # MOVE /Y - Атомна заміна файлу
-        # (goto) 2>nul & del "%~f0" - Надійний трюк для самовидалення
         bat_content = f"""@ECHO OFF
 TITLE Оновлення RemoteHand...
 ECHO Закриваю попередню версію (TASKKILL)...
@@ -156,7 +152,6 @@ DEL "{vbs_path.resolve()}"
             return
 
         # --- Створюємо .VBS файл ---
-        # Запускає .bat "невидимо" і від'єднано
         vbs_content = f"""
 Set WshShell = CreateObject("WScript.Shell")
 WshShell.Run "cmd /C ""{bat_path.resolve()}""", 0, False
@@ -176,7 +171,6 @@ WshShell.Run "cmd /C ""{bat_path.resolve()}""", 0, False
             logger.info(f"🔄 Запускаю update.vbs та завершую роботу...")
 
             # (ВИПРАВЛЕНО) os.startfile - найнадійніший спосіб "клікнути"
-            # на .vbs і негайно вийти
             os.startfile(str(vbs_path.resolve()))
 
             # Негайно закриваємо поточну програму
@@ -192,6 +186,7 @@ WshShell.Run "cmd /C ""{bat_path.resolve()}""", 0, False
 встановити
 оновлення
 """
+        # (ВИПРАВЛЕНО) Більш надійна перевірка на DEV
         if os.getenv('REMOTEHAND_DEV_MODE') == '1' or not getattr(sys, 'frozen', False):
             logger.info("🔧 DEV режим - пропускаємо оновлення")
             return False

@@ -136,9 +136,10 @@ class AnyDeskManager:
                 arguments = f'--set-anydesk-password "{self.anydesk_path}"'
                 logger.info(f"EXE Mode Admin Lauch: {executable} {arguments}")
             else:
-                # Режим DEV: запускаємо python.exe + [скрипт] + [аргументи]
+                # Режим DEV: запускаємо python.exe + [скрипт]
                 executable = sys.executable  # python.exe
-                # (ОНОВЛЕНО) Використовуємо Path.cwd() для коректного шляху в DEV
+                # (ВИПРАВЛЕНО) Використовуємо Path.cwd() для коректного шляху в DEV
+                # Викликаємо dev_run.py, який налаштує sys.path
                 script_path = str(Path.cwd() / "dev_run.py")
                 arguments = f'"{script_path}" --set-anydesk-password "{self.anydesk_path}"'
                 logger.info(f"DEV Mode Admin Lauch: {executable} {arguments}")
