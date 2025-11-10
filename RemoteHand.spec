@@ -1,24 +1,22 @@
 # -*- mode: python ; coding: utf-8 -*-
-import sys
-from pathlib import Path
 
 block_cipher = None
 
 a = Analysis(
-    ['src/main.py'],
+    ['src\\main.py'],
     pathex=[],
     binaries=[],
     datas=[
+        ('assets', 'assets'),
         ('version.txt', '.'),
     ],
     hiddenimports=[
-        'customtkinter',
-        'PIL',
-        'PIL._tkinter_finder',
+        'dotenv',
         'requests',
         'psutil',
-        'keyring',
-        'telegram',
+        'customtkinter',
+        'packaging',
+        'pywin32',
     ],
     hookspath=[],
     hooksconfig={},
@@ -46,10 +44,12 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,
+    console=True,  # ✅ Змінити на True для DEBUG (побачиш WARNING про токени)
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='assets\\icon.ico',
+    version='version_info.txt',
 )

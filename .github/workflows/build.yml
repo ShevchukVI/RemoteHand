@@ -10,58 +10,30 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11' # Використовуємо 3.11 для стабільності
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
-        pip install python-dotenv
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
 
-    - name: Extract version from tag
-      id: version
-      run: |
-        $tag = "${{ github.ref }}"
-        $version = $tag -replace 'refs/tags/v', ''
-        echo "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo $version | Out-File -FilePath version.txt
+      - name: Build EXE with PyInstaller
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          pyinstaller RemoteHand.spec
 
-    - name: Create .env file with secrets
-      run: |
-        echo "TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}" > .env
-        echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> .env
-        echo "ANYDESK_PASSWORD=${{ secrets.ANYDESK_PASSWORD }}" >> .env
-
-    - name: Build with PyInstaller
-      run: |
-        pyinstaller --onefile `
-          --windowed `
-          --icon=assets/icon.ico `
-          --add-data "version.txt;." `
-          --add-data "assets/icon.ico;assets" `
-          --collect-all customtkinter `
-          --distpath dist `
-          --name RemoteHand `
-          src/main.py
-
-    - name: Create GitHub Release
-      id: create_release
-      uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: RemoteHand v${{ env.VERSION }}
-        body: |
-          # RemoteHand v${{ env.VERSION }}
-        draft: false
-        prerelease: false
-        files: |
-          ./dist/RemoteHand.exe
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/RemoteHand.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
