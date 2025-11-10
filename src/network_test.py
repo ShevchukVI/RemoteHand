@@ -42,9 +42,11 @@ class NetworkTest:
             return -1
 
     def run_full_test(self):
-        """Запустити повний тест мережі"""
+        """(ОНОВЛЕНО) Запустити повний тест мережі"""
         pc_name = socket.gethostname()
         store_location = self.config.store_location_text
+        # (НОВЕ) Отримуємо ПІБ
+        user_name = self.config.get("user_name", "")
 
         hosts = {
             "1С Сервер": "23.88.7.196",
@@ -77,9 +79,9 @@ class NetworkTest:
             status_text = "❌ Серйозні проблеми"
             color = "red"
 
-        # Відправити в Telegram
+        # (ОНОВЛЕНО) Відправити в Telegram разом з ПІБ
         test_report = "\n".join(report_parts)
-        self.telegram.send_network_report(store_location, pc_name, test_report)
+        self.telegram.send_network_report(store_location, pc_name, test_report, user_name)
 
         return {
             "status": status_text,

@@ -77,11 +77,15 @@ class TelegramAPI:
             logger.error(f"❌ Помилка відправки файлу: {e}")
             return False
 
-    def send_network_report(self, store_location, pc_name, test_results):
-        """Відправити звіт про стан мережі"""
+    def send_network_report(self, store_location, pc_name, test_results, user_name=""):
+        """(ОНОВЛЕНО) Відправити звіт про стан мережі"""
+
+        # (НОВЕ) Додати ПІБ якщо є
+        user_info = f"\n<b>👤 Користувач:</b> {user_name}" if user_name else ""
+
         report = (
             f"<b>📊 Звіт про стан мережі</b>\n\n"
-            f"<b>Магазин/Локація:</b> {store_location}\n"
+            f"<b>Магазин/Локація:</b> {store_location}{user_info}\n"  # <-- ОНОВЛЕНО
             f"<b>ПК:</b> <code>{pc_name}</code>\n"
             f"<b>Час:</b> {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
             f"<b>Результати:</b>\n"
@@ -91,16 +95,14 @@ class TelegramAPI:
 
     def send_anydesk_info(self, store_location, user_name, pc_name, anydesk_id, password):
         """
-        (ОНОВЛЕНО)
         Відправити AnyDesk інформацію (покращене форматування)
         """
-        # Додати ПІБ якщо є
-        user_info = f"<b>👤 Користувач:</b> {user_name}" if user_name else ""
+        user_info = f"\n<b>👤 Користувач:</b> {user_name}" if user_name else ""
 
         message = (
             f"<b>🌐 Запит на AnyDesk</b>\n\n"
             f"<b>📍 Магазин:</b> {store_location}\n"
-            f"<b>💻 Комп'ютер:</b> <code>{pc_name}</code>\n"
+            f"<b>💻 Комп'ютер:</b> <code>{pc_name}</code>"
             f"{user_info}\n\n"
             f"<b>--- Дані для входу ---</b>\n"
             f"<b>🆔 ID:</b> <code>{anydesk_id}</code>\n"

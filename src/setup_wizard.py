@@ -1,116 +1,138 @@
 import customtkinter as ctk
 import tkinter.messagebox as messagebox
 
+# (НОВЕ) Налаштування стилю iOS
+IOS_BG_COLOR = "#f2f2f7"
+IOS_CARD_COLOR = "#ffffff"
+IOS_TEXT_COLOR = "#000000"
+IOS_CARD_BORDER = "#E0E0E0"
+IOS_CARD_RADIUS = 15
+IOS_BUTTON_RADIUS = 12
+
 
 class SetupWizard(ctk.CTkToplevel):
     def __init__(self, parent, on_complete):
         super().__init__(parent)
 
-        self.title("RemoteHand - Первоначальная настройка")
-        self.geometry("450x500")
+        self.title("RemoteHand - Налаштування")
+        self.geometry("450x520")
         self.resizable(False, False)
 
-        # Центрувати на екрані
+        # (ОНОВЛЕНО) Встановлення фону
+        self.configure(fg_color=IOS_BG_COLOR)
+
         self.transient(parent)
         self.grab_set()
-
-        # ⚠️ ЗАБОРОНИТИ ЗАКРИТТЯ БЕЗ ЗБЕРЕЖЕННЯ
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.on_complete = on_complete
         self.setup_complete = False
 
-        # Встановлення теми
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("blue")
 
         # Заголовок
         title = ctk.CTkLabel(
             self,
-            text="Первоначальная настройка",
-            font=ctk.CTkFont(size=18, weight="bold")
+            text="Перше налаштування",
+            font=ctk.CTkFont(size=22, weight="bold"),
+            text_color=IOS_TEXT_COLOR
         )
-        title.pack(pady=20)
+        title.pack(pady=20, padx=20, anchor="w")
 
-        # ===== МАГАЗИН (ВЫБІР) =====
-        ctk.CTkLabel(
+        subtitle = ctk.CTkLabel(
             self,
+            text="Вкажіть, де знаходиться цей комп'ютер.",
+            font=ctk.CTkFont(size=13),
+            text_color="#8A8A8E"
+        )
+        subtitle.pack(pady=(0, 20), padx=20, anchor="w")
+
+        # (НОВЕ) Картка для налаштувань
+        main_frame = ctk.CTkFrame(
+            self,
+            fg_color=IOS_CARD_COLOR,
+            corner_radius=IOS_CARD_RADIUS,
+            border_width=1,
+            border_color=IOS_CARD_BORDER
+        )
+        main_frame.pack(fill="x", padx=20)
+
+        # ===== МАГАЗИН (ВИБІР) =====
+        ctk.CTkLabel(
+            main_frame,
             text="Виберіть магазин:",
-            font=ctk.CTkFont(size=12, weight="bold")
-        ).pack(anchor="w", padx=20, pady=(10, 5))
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=IOS_TEXT_COLOR
+        ).pack(anchor="w", padx=15, pady=(15, 5))
 
         self.store_var = ctk.StringVar(value="")
         store_options = [
-            "0 / Офіс",
-            "1 / Діалог",
-            "5 / Полтава",
-            "7 / Оазис",
-            "8 / Хмельницький",
-            "9 / Чернівці",
-            "17 / Кременчук",
-            "18 / П_Котляревського",
-            "20 / Щасливий",
-            "21 / Софія молл"
+            "0 / Офіс", "1 / Діалог", "5 / Полтава", "7 / Оазис",
+            "8 / Хмельницький", "9 / Чернівці", "17 / Кременчук",
+            "18 / П_Котляревського", "20 / Щасливий", "21 / Софія молл"
         ]
 
         self.store_menu = ctk.CTkComboBox(
-            self,
+            main_frame,
             values=store_options,
             variable=self.store_var,
             font=ctk.CTkFont(size=11),
-            height=35
+            height=35,
+            corner_radius=IOS_BUTTON_RADIUS
         )
-        self.store_menu.pack(padx=20, fill="x", pady=(0, 20))
+        self.store_menu.pack(padx=15, fill="x")
 
-        # ===== ЛОКАЦІЯ (ВЫБІР) =====
+        # ===== ЛОКАЦІЯ (ВИБІР) =====
         ctk.CTkLabel(
-            self,
+            main_frame,
             text="Виберіть локацію:",
-            font=ctk.CTkFont(size=12, weight="bold")
-        ).pack(anchor="w", padx=20, pady=(10, 5))
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=IOS_TEXT_COLOR
+        ).pack(anchor="w", padx=15, pady=(15, 5))
 
         self.location_var = ctk.StringVar(value="")
         location_options = [
-            "каса",
-            "каса 2",
-            "підсобка",
-            "особистий"
+            "каса", "каса 2", "підсобка", "особистий"
         ]
 
         self.location_menu = ctk.CTkComboBox(
-            self,
+            main_frame,
             values=location_options,
             variable=self.location_var,
             font=ctk.CTkFont(size=11),
-            height=35
+            height=35,
+            corner_radius=IOS_BUTTON_RADIUS
         )
-        self.location_menu.pack(padx=20, fill="x", pady=(0, 20))
+        self.location_menu.pack(padx=15, fill="x")
 
         # ===== ПІБ (ОПЦІЙНО) =====
         ctk.CTkLabel(
-            self,
+            main_frame,
             text="ПІБ користувача (опційно):",
-            font=ctk.CTkFont(size=12, weight="bold")
-        ).pack(anchor="w", padx=20, pady=(10, 5))
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=IOS_TEXT_COLOR
+        ).pack(anchor="w", padx=15, pady=(15, 5))
 
         self.user_name_entry = ctk.CTkEntry(
-            self,
+            main_frame,
             placeholder_text="Наприклад: Іван Петренко",
             height=35,
-            font=ctk.CTkFont(size=11)
+            font=ctk.CTkFont(size=11),
+            corner_radius=IOS_BUTTON_RADIUS
         )
-        self.user_name_entry.pack(padx=20, fill="x", pady=(0, 30))
+        self.user_name_entry.pack(padx=15, fill="x", pady=(0, 20))
 
-        # Кнопка
+        # Кнопка збереження
         btn = ctk.CTkButton(
             self,
             text="✅ Зберегти",
             command=self.save_settings,
             height=45,
             font=ctk.CTkFont(size=12, weight="bold"),
-            corner_radius=10
+            corner_radius=IOS_BUTTON_RADIUS
         )
-        btn.pack(padx=20, fill="x", pady=10)
+        btn.pack(padx=20, fill="x", pady=20)
 
     def on_closing(self):
         """Заборонити закриття без введення даних"""
@@ -128,7 +150,6 @@ class SetupWizard(ctk.CTkToplevel):
         location = self.location_var.get().strip()
         user_name = self.user_name_entry.get().strip()
 
-        # ⚠️ ОБОВ'ЯЗКОВА ПЕРЕВІРКА
         if not store:
             messagebox.showerror("Помилка", "Виберіть магазин!")
             return
@@ -137,7 +158,6 @@ class SetupWizard(ctk.CTkToplevel):
             messagebox.showerror("Помилка", "Виберіть локацію!")
             return
 
-        # Все ок - збережемо
         self.setup_complete = True
         self.on_complete({
             "store": store,

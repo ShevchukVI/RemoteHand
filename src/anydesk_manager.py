@@ -117,8 +117,8 @@ class AnyDeskManager:
     def set_password_with_admin(self) -> bool:
         """
         (ОНОВЛЕНО)
-        Запустити *саму себе* (sys.executable) з адмін правами
-        та аргументом '--set-anydesk-password'.
+        Запускає *саму себе* з адмін правами для встановлення пароля.
+        Коректно обробляє DEV-режим.
         """
         if not self.anydesk_path:
             logger.error("Шлях AnyDesk невідомий, не можу встановити пароль")
@@ -131,16 +131,25 @@ class AnyDeskManager:
             env = os.environ.copy()
             env["ANYDESK_PASSWORD"] = UNATTENDED_PASSWORD
 
-            # (НОВЕ) Створюємо аргументи для запуску
-            # sys.executable - це шлях до нашого RemoteHand.exe
-            # Ми запускаємо RemoteHand.exe --set-anydesk-password "шлях_до_anydesk"
-            arguments = f'--set-anydesk-password "{self.anydesk_path}"'
+            # (НОВЕ) Визначаємо, як запускати: .EXE чи .PY
+            if getattr(sys, 'frozen', False):
+                # Режим EXE: запускаємо сам .exe
+                executable = sys.executable
+                arguments = f'--set-anydesk-password "{self.anydesk_path}"'
+                logger.info(f"EXE Mode Admin Lauch: {executable} {arguments}")
+            else:
+                # Режим DEV: запускаємо python.exe + [скрипт] + [аргументи]
+                executable = sys.executable  # python.exe
+                # sys.argv[0] - це скрипт, який був запущений (напр. dev_run.py)
+                script_path = os.path.abspath(sys.argv[0])
+                arguments = f'"{script_path}" --set-anydesk-password "{self.anydesk_path}"'
+                logger.info(f"DEV Mode Admin Lauch: {executable} {arguments}")
 
             # Запустити скрипт з адмін правами
             ctypes.windll.shell32.ShellExecuteW(
                 None,
                 "runas",  # Запит адмін прав
-                sys.executable,  # Наш RemoteHand.exe
+                executable,  # RemoteHand.exe або python.exe
                 arguments,  # Аргументи
                 None,
                 1  # SW_SHOW - показати вікно (UAC)

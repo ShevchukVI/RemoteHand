@@ -60,6 +60,15 @@ except ImportError as e:
     anydesk_available = False
     logger.warning(f"anydesk_manager не доступна: {e}")
 
+# ============ Налаштування стилю iOS ============
+IOS_BG_COLOR = "#f2f2f7"       # Світло-сірий фон
+IOS_CARD_COLOR = "#ffffff"      # Білі картки
+IOS_TEXT_COLOR = "#000000"      # Чорний текст
+IOS_SUBTEXT_COLOR = "#8A8A8E"   # Сірий підпис
+IOS_CARD_BORDER = "#E0E0E0"   # Ледь помітна рамка картки
+IOS_CARD_RADIUS = 15
+IOS_BUTTON_RADIUS = 12
+
 
 class RemoteHandApp(ctk.CTk):
     def __init__(self):
@@ -70,14 +79,13 @@ class RemoteHandApp(ctk.CTk):
         self.geometry("520x800")
         self.resizable(True, True)
 
-        # Встановлення теми
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("blue")
+        self.configure(fg_color=IOS_BG_COLOR)
 
         # Ініціалізація менеджерів
         self.config = ConfigManager()
 
-        # ⚠️ ЗАВАНТАЖИТИ ТОКЕНИ З .env ЛИ CONFIG
         telegram_token = os.getenv("TELEGRAM_TOKEN") or self.config.get("telegram_token")
         telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID") or self.config.get("telegram_chat_id")
 
@@ -98,41 +106,49 @@ class RemoteHandApp(ctk.CTk):
 
         self.network_test = NetworkTest(self.config, self.telegram)
 
-        # ⚠️ СТВОРИТИ UI ВСІ РАЗИ, а потім показати SetupWizard якщо перший запуск
         self.setup_ui()
 
         if self.config.is_first_run():
             self.show_setup_wizard()
 
     def get_app_version(self):
-        """(ОНОВЛЕНО) Отримати версію програми"""
+        """(ОНОВЛЕНО) Отримати версію програми (з обробкою кодувань)"""
         try:
             if getattr(sys, 'frozen', False):
                 # Якщо EXE (скомпільовано)
-                # sys._MEIPASS - це шлях до тимчасової папки, куди PyInstaller все розпакував
                 base_path = Path(sys._MEIPASS)
             else:
-                # Якщо DEV (python src/main.py)
-                base_path = Path(__file__).parent.parent
+                # Якщо DEV (запуск з dev_run.py)
+                base_path = Path.cwd() # Поточна робоча директорія (корінь проєкту)
 
             version_file = base_path / "version.txt"
 
-            if version_file.exists():
-                return version_file.read_text(encoding='utf-8').strip()
-            else:
-                # (Fallback) Якщо _MEIPASS не спрацював, шукаємо поруч з .exe
+            if not version_file.exists():
                 logger.warning(f"Не знайдено version.txt у {base_path}")
                 base_path = Path(sys.executable).parent
                 version_file = base_path / "version.txt"
-                if version_file.exists():
-                    return version_file.read_text(encoding='utf-8').strip()
-                else:
-                    logger.warning(f"Не знайдено version.txt і у {base_path}")
+                if not version_file.exists():
+                     logger.warning(f"Не знайдено version.txt і у {base_path}")
+                     return "1.0.0" # Fallback
+
+            # (НОВЕ) Спроба читання з різними кодуваннями
+            try:
+                # Спробувати UTF-8-SIG (стандарт з BOM)
+                return version_file.read_text(encoding='utf-8-sig').strip()
+            except UnicodeDecodeError:
+                try:
+                    # Якщо не вийшло (byte 0xff), спробувати UTF-16
+                    logger.warning("version.txt не в UTF-8, пробую UTF-16...")
+                    return version_file.read_text(encoding='utf-16').strip()
+                except Exception as e_inner:
+                    logger.error(f"Не вдалося прочитати version.txt ні в UTF-8, ні в UTF-16: {e_inner}")
+            except Exception as e_outer:
+                logger.error(f"Помилка читання версії: {e_outer}")
 
         except Exception as e:
-            logger.error(f"Помилка читання версії: {e}")
+            logger.error(f"Критична помилка get_app_version: {e}")
 
-        return "1.0.0" # За замовчуванням, якщо нічого не знайдено
+        return "1.0.0" # За замовчуванням
 
     def show_setup_wizard(self):
         """Показати вікно налаштування при першому запуску"""
@@ -142,7 +158,6 @@ class RemoteHandApp(ctk.CTk):
             self.config.set("location", result["location"])
             if result.get("user_name"):
                 self.config.set("user_name", result["user_name"])
-            # ✅ Оновити UI після налаштування
             self.refresh_ui()
 
         wizard = SetupWizard(self, on_setup_complete)
@@ -150,7 +165,6 @@ class RemoteHandApp(ctk.CTk):
 
     def refresh_ui(self):
         """Оновити UI після налаштування"""
-        # Оновити інформацію про магазин
         user_info = self.config.store_location_text
         user_name = self.config.get("user_name", "")
         if user_name:
@@ -159,15 +173,16 @@ class RemoteHandApp(ctk.CTk):
         self.info_label.configure(text=f"📍 {user_info}")
 
     def setup_ui(self):
-        """Створення UI"""
+        """Створення UI в стилі iOS (компактно)"""
 
         # Заголовок
         title_label = ctk.CTkLabel(
             self,
             text="RemoteHand",
-            font=ctk.CTkFont(size=28, weight="bold")
+            font=ctk.CTkFont(size=28, weight="bold"),
+            text_color=IOS_TEXT_COLOR
         )
-        title_label.pack(pady=15)
+        title_label.pack(pady=(10, 0), padx=20, anchor="w")
 
         # Інформація про магазин/локацію + ПІБ
         user_info = self.config.store_location_text
@@ -178,57 +193,57 @@ class RemoteHandApp(ctk.CTk):
         self.info_label = ctk.CTkLabel(
             self,
             text=f"📍 {user_info}",
-            font=ctk.CTkFont(size=11),
-            text_color="gray"
+            font=ctk.CTkFont(size=12),
+            text_color=IOS_SUBTEXT_COLOR
         )
-        self.info_label.pack(pady=(0, 20))
+        self.info_label.pack(pady=(0, 15), padx=20, anchor="w")
 
-        # ==================== RDP БЛОК ====================
-        rdp_frame = ctk.CTkFrame(self)
-        rdp_frame.pack(pady=15, padx=20, fill="x")
+        # ==================== RDP БЛОК (КАРТКА 1) ====================
+        rdp_frame = ctk.CTkFrame(
+            self,
+            fg_color=IOS_CARD_COLOR,
+            corner_radius=IOS_CARD_RADIUS,
+            border_width=1,
+            border_color=IOS_CARD_BORDER
+        )
+        rdp_frame.pack(pady=8, padx=20, fill="x")
 
         ctk.CTkLabel(
             rdp_frame,
-            text="📋 Підключення до 1С",
-            font=ctk.CTkFont(size=13, weight="bold")
-        ).pack(anchor="w", pady=(0, 10))
+            text="Підключення до 1С",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=IOS_TEXT_COLOR
+        ).pack(anchor="w", pady=(10, 10), padx=15)
 
-        # Основна кнопка RDP
         rdp_btn = ctk.CTkButton(
             rdp_frame,
             text="🖥️ Відкрити 1С (RDP)",
             command=self.open_rdp,
             height=50,
             font=ctk.CTkFont(size=12, weight="bold"),
-            corner_radius=12,
+            corner_radius=IOS_BUTTON_RADIUS,
             fg_color="#007AFF",
             hover_color="#0051D5"
         )
-        rdp_btn.pack(fill="x", pady=(0, 10))
+        rdp_btn.pack(fill="x", pady=(0, 15), padx=15)
 
-        # ==================== ЗАКРИТТЯ СЕСІЙ ====================
-        close_sessions_btn = ctk.CTkButton(
-            self,
-            text="❌ Закрити всі RDP сесії",
-            command=self.close_sessions_confirm,
-            height=45,
-            font=ctk.CTkFont(size=12, weight="bold"),
-            corner_radius=12,
-            fg_color="#FF3B30",
-            hover_color="#D70015"
-        )
-        close_sessions_btn.pack(pady=15, padx=20, fill="x")
-
-        # ==================== ANYDESK БЛОК ====================
+        # ==================== ANYDESK БЛОК (КАРТКА 2) ====================
         if anydesk_available:
-            anydesk_frame = ctk.CTkFrame(self)
-            anydesk_frame.pack(pady=15, padx=20, fill="x")
+            anydesk_frame = ctk.CTkFrame(
+                self,
+                fg_color=IOS_CARD_COLOR,
+                corner_radius=IOS_CARD_RADIUS,
+                border_width=1,
+                border_color=IOS_CARD_BORDER
+            )
+            anydesk_frame.pack(pady=8, padx=20, fill="x")
 
             ctk.CTkLabel(
                 anydesk_frame,
-                text="🌐 Віддалений доступ",
-                font=ctk.CTkFont(size=13, weight="bold")
-            ).pack(anchor="w", pady=(0, 10))
+                text="Віддалений доступ",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                text_color=IOS_TEXT_COLOR
+            ).pack(anchor="w", pady=(10, 10), padx=15)
 
             anydesk_btn = ctk.CTkButton(
                 anydesk_frame,
@@ -236,21 +251,28 @@ class RemoteHandApp(ctk.CTk):
                 command=self.start_anydesk,
                 height=50,
                 font=ctk.CTkFont(size=12, weight="bold"),
-                corner_radius=12,
+                corner_radius=IOS_BUTTON_RADIUS,
                 fg_color="#FF6B35",
                 hover_color="#CC5529"
             )
-            anydesk_btn.pack(fill="x", pady=(0, 10))
+            anydesk_btn.pack(fill="x", pady=(0, 15), padx=15)
 
-        # ==================== ТЕСТ МЕРЕЖІ ====================
-        test_frame = ctk.CTkFrame(self)
-        test_frame.pack(pady=15, padx=20, fill="x")
+        # ==================== ДІАГНОСТИКА (КАРТКА 3) ====================
+        test_frame = ctk.CTkFrame(
+            self,
+            fg_color=IOS_CARD_COLOR,
+            corner_radius=IOS_CARD_RADIUS,
+            border_width=1,
+            border_color=IOS_CARD_BORDER
+        )
+        test_frame.pack(pady=8, padx=20, fill="x")
 
         ctk.CTkLabel(
             test_frame,
-            text="🔧 Діагностика",
-            font=ctk.CTkFont(size=13, weight="bold")
-        ).pack(anchor="w", pady=(0, 10))
+            text="Діагностика та Управління",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=IOS_TEXT_COLOR
+        ).pack(anchor="w", pady=(10, 10), padx=15)
 
         test_btn = ctk.CTkButton(
             test_frame,
@@ -258,46 +280,68 @@ class RemoteHandApp(ctk.CTk):
             command=self.run_network_test,
             height=50,
             font=ctk.CTkFont(size=12, weight="bold"),
-            corner_radius=12,
+            corner_radius=IOS_BUTTON_RADIUS,
             fg_color="#34C759",
             hover_color="#248A3D"
         )
-        test_btn.pack(fill="x", pady=(0, 10))
+        test_btn.pack(fill="x", pady=(0, 10), padx=15)
 
-        # ==================== СТАТУС ====================
-        self.status_label = ctk.CTkLabel(
-            self,
-            text="✅ Готово до роботи",
-            font=ctk.CTkFont(size=10),
-            text_color="gray"
+        # Розділювач
+        separator = ctk.CTkFrame(test_frame, height=1, fg_color=IOS_CARD_BORDER)
+        separator.pack(fill="x", padx=15, pady=5)
+
+        close_sessions_btn = ctk.CTkButton(
+            test_frame,
+            text="❌ Закрити всі RDP сесії",
+            command=self.close_sessions_confirm,
+            height=45,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            corner_radius=IOS_BUTTON_RADIUS,
+            fg_color="#FF3B30",
+            hover_color="#D70015"
         )
-        self.status_label.pack(pady=10)
+        close_sessions_btn.pack(fill="x", pady=(10, 15), padx=15)
 
-        # ==================== КНОПКА РЕДАГУВАННЯ МАГАЗИНУ ====================
-        settings_frame = ctk.CTkFrame(self)
-        settings_frame.pack(pady=10, padx=20, fill="x")
+        # ==================== НАЛАШТУВАННЯ (КАРТКА 4) ====================
+        settings_frame = ctk.CTkFrame(
+            self,
+            fg_color=IOS_CARD_COLOR,
+            corner_radius=IOS_CARD_RADIUS,
+            border_width=1,
+            border_color=IOS_CARD_BORDER
+        )
+        settings_frame.pack(pady=8, padx=20, fill="x")
 
         settings_btn = ctk.CTkButton(
             settings_frame,
             text="⚙️ Змінити магазин/локацію/ПІБ",
             command=self.show_setup_wizard,
-            height=35,
-            font=ctk.CTkFont(size=10),
-            corner_radius=8,
+            height=40,
+            font=ctk.CTkFont(size=11),
+            corner_radius=IOS_BUTTON_RADIUS,
             fg_color="#999999",
             hover_color="#666666"
         )
-        settings_btn.pack(fill="x")
+        settings_btn.pack(fill="x", pady=15, padx=15)
 
-        # ==================== ВЕРСІЯ + СТАТУС ОНОВЛЕННЯ ====================
-        version_frame = ctk.CTkFrame(self)
-        version_frame.pack(anchor="se", padx=10, pady=10)
+        # ==================== СТАТУС (Внизу) ====================
+        self.status_label = ctk.CTkLabel(
+            self,
+            text="✅ Готово до роботи",
+            font=ctk.CTkFont(size=10),
+            text_color=IOS_SUBTEXT_COLOR
+        )
+        self.status_label.pack(pady=8)
+
+        # ==================== ВЕРСІЯ (Внизу) ====================
+        version_frame = ctk.CTkFrame(self, fg_color="transparent")
+        version_frame.pack(anchor="s", pady=(0, 8))
 
         version_label = ctk.CTkLabel(
             version_frame,
             text=f"v{self.get_app_version()}",
             font=ctk.CTkFont(size=9, weight="bold"),
-            text_color="#333333"
+            text_color=IOS_SUBTEXT_COLOR
         )
         version_label.pack(side="left", padx=5)
 
@@ -315,11 +359,9 @@ class RemoteHandApp(ctk.CTk):
             messagebox.showerror("Помилка", "RDP менеджер не доступен")
             return
 
-        # Перевірити, чи пароль вже збережено
         saved_password = self.rdp_manager.get_credentials(RDP_HOST, "admin")
 
         if saved_password:
-            # Використовувати збережений пароль
             self.set_status("⏳ Підключення...", "processing")
 
             def connect():
@@ -335,7 +377,6 @@ class RemoteHandApp(ctk.CTk):
             thread = threading.Thread(target=connect, daemon=True)
             thread.start()
         else:
-            # Запросити новий пароль
             dialog = ctk.CTkInputDialog(
                 text="Введіть пароль для RDP:",
                 title="Підключення до 1С"
@@ -344,10 +385,7 @@ class RemoteHandApp(ctk.CTk):
 
             if password:
                 self.set_status("💾 Збереження пароля...", "processing")
-
-                # Спробувати підключитися
                 if self.rdp_manager.connect_rdp(RDP_HOST, RDP_PORT, "admin", password):
-                    # Якщо успішно, то зберегти пароль
                     self.rdp_manager.save_credentials(RDP_HOST, "admin", password)
                     self.set_status("✅ Успішно підключено", "success")
                 else:
@@ -374,7 +412,6 @@ class RemoteHandApp(ctk.CTk):
 
         def anydesk_task():
             try:
-                # Запустити AnyDesk - пароль НЕ передаємо та НЕ показуємо!
                 anydesk_id, pwd = self.anydesk_manager.start(None)
 
                 if anydesk_id:
@@ -426,14 +463,12 @@ class RemoteHandApp(ctk.CTk):
 
 def run_password_setter(anydesk_path, password):
     """
-    (НОВА ФУНКЦІЯ)
     Ця функція виконує логіку з set_anydesk_password.py.
     Вона запускається ТІЛЬКИ коли програма запущена з адмін правами
     та аргументом --set-anydesk-password.
     """
     logger.info(f"[*] Запуск в режимі встановлення пароля для: {anydesk_path}")
 
-    # Перевірка адмін прав (подвійна)
     try:
         is_admin = ctypes.windll.shell32.IsUserAnAdmin()
         if not is_admin:
@@ -451,7 +486,6 @@ def run_password_setter(anydesk_path, password):
         logger.info(f"[*] Встановлюю пароль AnyDesk (у адмін режимі)...")
         time.sleep(1)
 
-        # Встановити через stdin
         cmd = [anydesk_path, "--set-password", "_full_access"]
 
         result = subprocess.run(
@@ -464,7 +498,7 @@ def run_password_setter(anydesk_path, password):
         )
 
         logger.info(f"[CODE] {result.returncode}")
-        if result.returncode in [0, 8000]: # 8000 - код успіху для Anydesk
+        if result.returncode in [0, 8000]:
             logger.info("[✓] Пароль встановлено!")
         else:
             logger.error(f"[!] Код помилки: {result.returncode}")
@@ -480,9 +514,6 @@ def run_password_setter(anydesk_path, password):
 
 def main():
     """Головна функція"""
-
-    # ============ (НОВЕ) ОБРОБКА АРГУМЕНТІВ ============
-    # Перевіряємо, чи потрібно запустити лише встановлювач пароля
     if len(sys.argv) > 1 and sys.argv[1] == '--set-anydesk-password':
         try:
             anydesk_path = sys.argv[2] if len(sys.argv) > 2 else None
@@ -492,7 +523,6 @@ def main():
             logger.error(f"Помилка запуску password_setter: {e}")
             sys.exit(1)
         sys.exit(0)
-    # =================================================
 
     logger.info("Запуск RemoteHand...")
     app = RemoteHandApp()
