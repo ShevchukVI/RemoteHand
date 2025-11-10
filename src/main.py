@@ -95,7 +95,7 @@ class RemoteHandApp(ctk.CTk):
         ctk.set_default_color_theme("blue")
         self.configure(fg_color=IOS_BG_COLOR)
 
-        # (НОВЕ) Встановлення іконки
+        # (ОНОВЛЕНО) Встановлення іконки
         try:
             icon_path = self.get_resource_path("assets/icon.ico")
             if icon_path.exists():
@@ -482,10 +482,12 @@ def run_password_setter(anydesk_path, password):
     СТВОРЮЄ ФАЙЛ-ПРАПОРЕЦЬ ПІСЛЯ ЗАВЕРШЕННЯ.
     """
 
-    # (НОВЕ) Використовуємо тимчасову папку для прапорця
-    FLAG_FILE_PATH = Path(os.environ.get("TEMP", Path.home())) / ".rh_pass_set_flag"
+    # (ОНОВЛЕНО) Використовуємо C:\ProgramData - спільну папку
+    # os.environ['PROGRAMDATA'] - це надійний спосіб отримати 'C:\ProgramData'
+    FLAG_FILE_PATH = Path(os.environ.get("PROGRAMDATA", "C:/")) / ".rh_pass_set_flag"
 
     logger.info(f"[*] Запуск в режимі встановлення пароля для: {anydesk_path}")
+    logger.info(f"[*] Шлях до прапорця: {FLAG_FILE_PATH}")
 
     try:
         is_admin = ctypes.windll.shell32.IsUserAnAdmin()
@@ -523,7 +525,7 @@ def run_password_setter(anydesk_path, password):
             logger.error(f"[STDOUT] {result.stdout}")
             logger.error(f"[STDERR] {result.stderr}")
 
-        # (НОВЕ) Створюємо прапорець, що робота виконана
+        # (ОНОВЛЕНО) Створюємо прапорець, що робота виконана
         try:
             with open(FLAG_FILE_PATH, 'w') as f:
                 f.write('ok')

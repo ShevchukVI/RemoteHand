@@ -138,7 +138,8 @@ class AnyDeskManager:
             else:
                 # Режим DEV: запускаємо python.exe + [скрипт] + [аргументи]
                 executable = sys.executable  # python.exe
-                script_path = os.path.abspath(sys.argv[0])
+                # (ОНОВЛЕНО) Використовуємо Path.cwd() для коректного шляху в DEV
+                script_path = str(Path.cwd() / "dev_run.py")
                 arguments = f'"{script_path}" --set-anydesk-password "{self.anydesk_path}"'
                 logger.info(f"DEV Mode Admin Lauch: {executable} {arguments}")
 
@@ -220,8 +221,10 @@ class AnyDeskManager:
         # Крок 4: ВСТАНОВИТИ ПАРОЛЬ (З ОЧІКУВАННЯМ)
         logger.info("🔐 Встановлення пароля...")
 
-        # (НОВЕ) Шлях до прапорця та очищення старого, якщо є
-        flag_file = Path(os.environ.get("TEMP", Path.home())) / ".rh_pass_set_flag"
+        # (ОНОВЛЕНО) Використовуємо C:\ProgramData - спільну папку
+        flag_file = Path(os.environ.get("PROGRAMDATA", "C:/")) / ".rh_pass_set_flag"
+        logger.info(f"[*] Шлях до прапорця: {flag_file}")
+
         if flag_file.exists():
             try:
                 os.remove(flag_file)
@@ -231,7 +234,6 @@ class AnyDeskManager:
         # Запускаємо адмін-процес
         if not self.set_password_with_admin():
             logger.error("Не вдалося запустити адмін-процес.")
-            # Пробуємо продовжити без пароля (хоча б ID)
             pass
 
         # (ОНОВЛЕНО) Чекаємо на адмін-процес (до 3 хвилин)
