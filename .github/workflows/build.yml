@@ -15,7 +15,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.13'
+        python-version: '3.11'
 
     - name: Install dependencies
       run: |
@@ -43,8 +43,6 @@ jobs:
         pyinstaller --onefile `
           --windowed `
           --icon=assets/icon.ico `
-          --add-data ".env;." `
-          --add-data "src/set_anydesk_password.py;src" `
           --add-data "version.txt;." `
           --collect-all customtkinter `
           --distpath dist `
@@ -60,20 +58,6 @@ jobs:
         release_name: RemoteHand v${{ env.VERSION }}
         body: |
           # RemoteHand v${{ env.VERSION }}
-          
-          **🎉 Завантажте та запустіть RemoteHand.exe!**
-          
-          ✅ **Новості:**
-          - Автооновлення активне
-          - 🔒 Токен Telegram захищено
-          - 🚀 AnyDesk з автоматичним паролем
-          - 📌 Версія відображається в додатку
-          
-          **Інструкція:**
-          1. Завантажте RemoteHand.exe
-          2. Запустіть його
-          3. Виберіть магазин та локацію
-          4. Всі оновлення завантажуватимуться автоматично
         draft: false
         prerelease: false
         files: |
