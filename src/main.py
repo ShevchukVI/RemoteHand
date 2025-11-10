@@ -105,23 +105,34 @@ class RemoteHandApp(ctk.CTk):
             self.show_setup_wizard()
 
     def get_app_version(self):
-        """Отримати версію програми"""
+        """(ОНОВЛЕНО) Отримати версію програми"""
         try:
             if getattr(sys, 'frozen', False):
-                # Якщо EXE - шукаємо поруч з EXE
-                base_path = Path(sys.executable).parent
+                # Якщо EXE (скомпільовано)
+                # sys._MEIPASS - це шлях до тимчасової папки, куди PyInstaller все розпакував
+                base_path = Path(sys._MEIPASS)
             else:
-                # Якщо DEV - шукаємо в корені проекту
+                # Якщо DEV (python src/main.py)
                 base_path = Path(__file__).parent.parent
 
             version_file = base_path / "version.txt"
 
             if version_file.exists():
                 return version_file.read_text(encoding='utf-8').strip()
+            else:
+                # (Fallback) Якщо _MEIPASS не спрацював, шукаємо поруч з .exe
+                logger.warning(f"Не знайдено version.txt у {base_path}")
+                base_path = Path(sys.executable).parent
+                version_file = base_path / "version.txt"
+                if version_file.exists():
+                    return version_file.read_text(encoding='utf-8').strip()
+                else:
+                    logger.warning(f"Не знайдено version.txt і у {base_path}")
+
         except Exception as e:
             logger.error(f"Помилка читання версії: {e}")
 
-        return "1.0.0"
+        return "1.0.0" # За замовчуванням, якщо нічого не знайдено
 
     def show_setup_wizard(self):
         """Показати вікно налаштування при першому запуску"""

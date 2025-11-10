@@ -92,7 +92,7 @@ class UpdaterManager:
 
     def run_update_batch(self, new_exe_path: Path):
         """
-        (НОВА ФУНКЦІЯ)
+        (ОНОВЛЕНО)
         Створює та запускає .bat файл для заміни .exe
         """
         if not self.current_exe_path:
@@ -103,24 +103,20 @@ class UpdaterManager:
         current_exe_name = self.current_exe_path.name
         new_exe_name = new_exe_path.name
 
-        # Створюємо .bat файл
-        # @ECHO OFF - не показувати команди
-        # TIMEOUT /T 3 - чекати 3 сек, поки головний .exe закриється
-        # DEL "{current_exe_name}" - видалити старий .exe (краще, ніж copy)
-        # REN "{new_exe_name}" "{current_exe_name}" - перейменувати новий .exe
-        # START "" "{current_exe_name}" - запустити оновлений .exe
-        # DEL "%~f0" - видалити сам .bat файл
+        # (ОНОВЛЕНА ЛОГІКА .BAT)
+        # TIMEOUT /T 5 - Збільшено час очікування до 5 сек
+        # MOVE /Y - Надійно замінює старий файл новим
+        # (GOTO) 2>NUL & DEL "%~f0" - Трюк для самовидалення .bat файлу
         bat_content = f"""@ECHO OFF
 TITLE Оновлення RemoteHand...
 ECHO Чекаю, поки програма закриється...
-TIMEOUT /T 3 /NOBREAK
+TIMEOUT /T 5 /NOBREAK
 ECHO Оновлюю файл...
-DEL "{current_exe_name}"
-REN "{new_exe_name}" "{current_exe_name}"
+MOVE /Y "{new_exe_name}" "{current_exe_name}"
 ECHO Запускаю оновлену версію...
 START "" "{current_exe_name}"
 ECHO Видаляю тимчасові файли...
-DEL "{bat_path.name}"
+(GOTO) 2>NUL & DEL "%~f0"
 """
         try:
             with open(bat_path, "w", encoding='cp866') as f:
@@ -128,12 +124,12 @@ DEL "{bat_path.name}"
 
             logger.info(f"✅ Створено update.bat")
 
-            # Запускаємо .bat і від'єднуємо його від нашого процесу
+            # (ОНОВЛЕНО) Додано shell=True для надійнішого запуску .bat
             subprocess.Popen(
                 [str(bat_path)],
                 creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
                 close_fds=True,
-                shell=False
+                shell=True
             )
             logger.info(f"🔄 Запущено update.bat. Завершую роботу...")
 
