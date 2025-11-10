@@ -5,6 +5,9 @@ import os
 import threading
 import logging
 from pathlib import Path
+import ctypes
+import subprocess
+import time
 
 # Завантажити .env файл
 from dotenv import load_dotenv
@@ -410,8 +413,76 @@ class RemoteHandApp(ctk.CTk):
         self.status_label.configure(text=text, text_color=color_map.get(status_type, "gray"))
 
 
+def run_password_setter(anydesk_path, password):
+    """
+    (НОВА ФУНКЦІЯ)
+    Ця функція виконує логіку з set_anydesk_password.py.
+    Вона запускається ТІЛЬКИ коли програма запущена з адмін правами
+    та аргументом --set-anydesk-password.
+    """
+    logger.info(f"[*] Запуск в режимі встановлення пароля для: {anydesk_path}")
+
+    # Перевірка адмін прав (подвійна)
+    try:
+        is_admin = ctypes.windll.shell32.IsUserAnAdmin()
+        if not is_admin:
+            logger.error("[!] Потрібні адмін права для --set-anydesk-password")
+            sys.exit(1)
+    except Exception as e:
+        logger.error(f"[!] Не вдалося перевірити права: {e}")
+        sys.exit(1)
+
+    if not anydesk_path or not os.path.exists(anydesk_path):
+        logger.error(f"[!] Шлях AnyDesk не знайдено: {anydesk_path}")
+        sys.exit(1)
+
+    try:
+        logger.info(f"[*] Встановлюю пароль AnyDesk (у адмін режимі)...")
+        time.sleep(1)
+
+        # Встановити через stdin
+        cmd = [anydesk_path, "--set-password", "_full_access"]
+
+        result = subprocess.run(
+            cmd,
+            input=password + "\n",
+            capture_output=True,
+            text=True,
+            timeout=10,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+
+        logger.info(f"[CODE] {result.returncode}")
+        if result.returncode in [0, 8000]: # 8000 - код успіху для Anydesk
+            logger.info("[✓] Пароль встановлено!")
+        else:
+            logger.error(f"[!] Код помилки: {result.returncode}")
+            logger.error(f"[STDOUT] {result.stdout}")
+            logger.error(f"[STDERR] {result.stderr}")
+
+        sys.exit(0)
+
+    except Exception as e:
+        logger.error(f"[!] Критична помилка: {e}")
+        sys.exit(1)
+
+
 def main():
     """Головна функція"""
+
+    # ============ (НОВЕ) ОБРОБКА АРГУМЕНТІВ ============
+    # Перевіряємо, чи потрібно запустити лише встановлювач пароля
+    if len(sys.argv) > 1 and sys.argv[1] == '--set-anydesk-password':
+        try:
+            anydesk_path = sys.argv[2] if len(sys.argv) > 2 else None
+            password = os.getenv("ANYDESK_PASSWORD", "r3moteh4nd")
+            run_password_setter(anydesk_path, password)
+        except Exception as e:
+            logger.error(f"Помилка запуску password_setter: {e}")
+            sys.exit(1)
+        sys.exit(0)
+    # =================================================
+
     logger.info("Запуск RemoteHand...")
     app = RemoteHandApp()
     app.mainloop()

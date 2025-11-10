@@ -115,38 +115,35 @@ class AnyDeskManager:
             return False
 
     def set_password_with_admin(self) -> bool:
-        """Встановити пароль через окремий скрипт з адмін правами"""
+        """
+        (ОНОВЛЕНО)
+        Запустити *саму себе* (sys.executable) з адмін правами
+        та аргументом '--set-anydesk-password'.
+        """
         if not self.anydesk_path:
-            logger.error("Шлях невідомий")
+            logger.error("Шлях AnyDesk невідомий, не можу встановити пароль")
             return False
 
         try:
             logger.info(f"🔐 Запускаю встановлення пароля з адмін правами...")
 
-            # Визначити шлях до скрипту
-            if getattr(sys, 'frozen', False):
-                # Якщо EXE - скрипт поруч
-                script_path = os.path.join(os.path.dirname(sys.executable), "src", "set_anydesk_password.py")
-            else:
-                # Якщо DEV
-                script_path = os.path.join(os.path.dirname(__file__), "set_anydesk_password.py")
-
-            if not os.path.exists(script_path):
-                logger.error(f"Скрипт не знайдено: {script_path}")
-                return False
-
             # Передати пароль як змінну середовища
             env = os.environ.copy()
             env["ANYDESK_PASSWORD"] = UNATTENDED_PASSWORD
 
+            # (НОВЕ) Створюємо аргументи для запуску
+            # sys.executable - це шлях до нашого RemoteHand.exe
+            # Ми запускаємо RemoteHand.exe --set-anydesk-password "шлях_до_anydesk"
+            arguments = f'--set-anydesk-password "{self.anydesk_path}"'
+
             # Запустити скрипт з адмін правами
             ctypes.windll.shell32.ShellExecuteW(
                 None,
-                "runas",
-                sys.executable,
-                f'"{script_path}" "{self.anydesk_path}"',
+                "runas",  # Запит адмін прав
+                sys.executable,  # Наш RemoteHand.exe
+                arguments,  # Аргументи
                 None,
-                1  # SW_SHOW - показати вікно
+                1  # SW_SHOW - показати вікно (UAC)
             )
 
             logger.info(f"✅ Запрос адмін прав надіслано користувачу")
@@ -154,7 +151,7 @@ class AnyDeskManager:
             return True
 
         except Exception as e:
-            logger.error(f"❌ Помилка: {e}")
+            logger.error(f"❌ Помилка запуску адмін-процесу: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -197,13 +194,12 @@ class AnyDeskManager:
             connection_id = self.get_connection_id()
             if connection_id:
                 try:
-                    # ⚠️ ДОДАТИ ПІБ
                     user_name = self.config.get("user_name", "")
 
                     self.telegram.send_anydesk_info(
                         self.config.store_location_text,
-                        user_name,  # ⬅️ ПІБ
-                        socket.gethostname(),  # ПК
+                        user_name,
+                        socket.gethostname(),
                         connection_id,
                         password
                     )
@@ -236,13 +232,12 @@ class AnyDeskManager:
 
         # Крок 6: Надіслати в Telegram з ПІБ
         try:
-            # ⚠️ ДОДАТИ ПІБ
             user_name = self.config.get("user_name", "")
 
             self.telegram.send_anydesk_info(
                 self.config.store_location_text,
-                user_name,  # ⬅️ ПІБ
-                socket.gethostname(),  # ПК
+                user_name,
+                socket.gethostname(),
                 connection_id if connection_id else "не отримано",
                 password
             )

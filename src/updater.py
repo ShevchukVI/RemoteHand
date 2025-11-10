@@ -16,7 +16,16 @@ class UpdaterManager:
     GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
     def __init__(self):
-        self.app_dir = Path(__file__).parent.parent
+        # (ОНОВЛЕНО) Визначаємо шляхи для .exe
+        if getattr(sys, 'frozen', False):
+            # Режим EXE
+            self.current_exe_path = Path(sys.executable)
+            self.app_dir = self.current_exe_path.parent
+        else:
+            # Режим DEV
+            self.current_exe_path = None
+            self.app_dir = Path(__file__).parent.parent
+
         self.version_file = self.app_dir / "version.txt"
         self.current_version = self.get_current_version()
 
@@ -45,47 +54,99 @@ class UpdaterManager:
     def compare_versions(self, current, latest):
         """Порівняти версії"""
         try:
-            current_parts = [int(x) for x in current.split('.')]
-            latest_parts = [int(x) for x in latest.split('.')]
-            return latest_parts > current_parts
-        except:
+            from packaging.version import parse
+            return parse(latest) > parse(current)
+        except ImportError:
+            # Fallback для простого порівняння, якщо packaging не встановлено
+            try:
+                current_parts = [int(x) for x in current.split('.')]
+                latest_parts = [int(x) for x in latest.split('.')]
+                return latest_parts > current_parts
+            except:
+                return False
+        except Exception:
             return False
 
-    def download_and_update(self, latest_version):
-        """Завантажити та встановити нову версію"""
+    def download_update(self, latest_version):
+        """Завантажити нову версію"""
         try:
             logger.info(f"📥 Завантажую RemoteHand v{latest_version}...")
-
             download_url = f"https://github.com/{self.GITHUB_REPO}/releases/download/v{latest_version}/RemoteHand.exe"
 
-            # Завантажити нову версію
-            response = requests.get(download_url, timeout=30)
+            response = requests.get(download_url, timeout=60, stream=True)
             response.raise_for_status()
 
-            # Визначити шлях для нової версії
-            if getattr(sys, 'frozen', False):
-                # Якщо запущено як EXE
-                current_exe = Path(sys.executable)
-                new_exe = current_exe.parent / "RemoteHand_new.exe"
-            else:
-                # Якщо запущено як Python скрипт (DEV)
-                new_exe = Path.cwd() / "RemoteHand_new.exe"
+            # (ОНОВЛЕНО) Зберігаємо як _new.exe
+            new_exe_path = self.app_dir / "RemoteHand_new.exe"
 
-            # Зберегти нову версію
-            with open(new_exe, 'wb') as f:
-                f.write(response.content)
+            with open(new_exe_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
 
-            logger.info(f"✅ RemoteHand v{latest_version} завантажено")
-            return str(new_exe)
+            logger.info(f"✅ RemoteHand v{latest_version} завантажено: {new_exe_path}")
+            return new_exe_path
 
         except Exception as e:
             logger.error(f"❌ Помилка завантаження: {e}")
             return None
 
+    def run_update_batch(self, new_exe_path: Path):
+        """
+        (НОВА ФУНКЦІЯ)
+        Створює та запускає .bat файл для заміни .exe
+        """
+        if not self.current_exe_path:
+            logger.warning("Не можу запустити .bat в DEV режимі.")
+            return
+
+        bat_path = self.app_dir / "update.bat"
+        current_exe_name = self.current_exe_path.name
+        new_exe_name = new_exe_path.name
+
+        # Створюємо .bat файл
+        # @ECHO OFF - не показувати команди
+        # TIMEOUT /T 3 - чекати 3 сек, поки головний .exe закриється
+        # DEL "{current_exe_name}" - видалити старий .exe (краще, ніж copy)
+        # REN "{new_exe_name}" "{current_exe_name}" - перейменувати новий .exe
+        # START "" "{current_exe_name}" - запустити оновлений .exe
+        # DEL "%~f0" - видалити сам .bat файл
+        bat_content = f"""@ECHO OFF
+TITLE Оновлення RemoteHand...
+ECHO Чекаю, поки програма закриється...
+TIMEOUT /T 3 /NOBREAK
+ECHO Оновлюю файл...
+DEL "{current_exe_name}"
+REN "{new_exe_name}" "{current_exe_name}"
+ECHO Запускаю оновлену версію...
+START "" "{current_exe_name}"
+ECHO Видаляю тимчасові файли...
+DEL "{bat_path.name}"
+"""
+        try:
+            with open(bat_path, "w", encoding='cp866') as f:
+                f.write(bat_content)
+
+            logger.info(f"✅ Створено update.bat")
+
+            # Запускаємо .bat і від'єднуємо його від нашого процесу
+            subprocess.Popen(
+                [str(bat_path)],
+                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                close_fds=True,
+                shell=False
+            )
+            logger.info(f"🔄 Запущено update.bat. Завершую роботу...")
+
+            # Негайно закриваємо поточну програму
+            sys.exit(0)
+
+        except Exception as e:
+            logger.error(f"❌ Помилка створення/запуску update.bat: {e}")
+
     def check_and_update(self):
         """Перевірити та встановити оновлення"""
         # НЕ оновлювати в DEV режимі!
-        if os.getenv('REMOTEHAND_DEV_MODE') == '1':
+        if os.getenv('REMOTEHAND_DEV_MODE') == '1' or not getattr(sys, 'frozen', False):
             logger.info("🔧 DEV режим - пропускаємо оновлення")
             return False
 
@@ -96,35 +157,22 @@ class UpdaterManager:
             logger.info("⚠️ Не вдалося перевірити оновлення")
             return False
 
+        logger.info(f"📌 Поточна версія: {self.current_version}")
+        logger.info(f"📦 Остання версія: {latest_version}")
+
         if self.compare_versions(self.current_version, latest_version):
             logger.info(f"📦 Доступне оновлення: {latest_version}")
-            logger.info(f"📌 Поточна версія: {self.current_version}")
 
             # Завантажити нову версію
-            new_exe = self.download_and_update(latest_version)
+            new_exe = self.download_update(latest_version)
 
-            if new_exe and os.path.exists(new_exe):
+            if new_exe and new_exe.exists():
                 logger.info(f"✅ Нова версія готова!")
-                logger.info(f"🔄 Перезапуск...")
-
-                # ⚠️ АВТОМАТИЧНИЙ ПЕРЕЗАПУСК
-                try:
-                    # Запустити нову версію
-                    subprocess.Popen([new_exe], shell=False)
-
-                    # Чекати 1 секунду
-                    time.sleep(1)
-
-                    # Закрити поточну версію
-                    logger.info("👋 Завершення роботи старої версії")
-                    sys.exit(0)
-
-                except Exception as e:
-                    logger.error(f"❌ Помилка перезапуску: {e}")
-                    logger.info(f"Запустіть вручну: {new_exe}")
-                    return False
-
-                return True
+                # (ОНОВЛЕНО) Запускаємо .bat замість прямого запуску
+                self.run_update_batch(new_exe)
+                return True  # Хоча програма вже вийде
+            else:
+                logger.error("❌ Не вдалося завантажити оновлення.")
 
         logger.info(f"✅ Версія актуальна: {self.current_version}")
         return False
