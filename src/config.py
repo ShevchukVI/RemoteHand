@@ -7,7 +7,7 @@ load_dotenv()
 
 APP_NAME = "RemoteHand"
 RDP_HOST = "23.88.7.196"
-RDP_PORT = 3389
+RDP_PORT = 4420
 PING_HOST = "23.88.7.196"
 
 # 🔒 ЗІ ЗМІННИХ СЕРЕДОВИЩА, А НЕ З .env!

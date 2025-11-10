@@ -1,7 +1,7 @@
 import requests
 import logging
-import socket
 import time
+import os
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -13,10 +13,24 @@ class TelegramAPI:
     def __init__(self, token, chat_id):
         self.token = token
         self.chat_id = chat_id
-        self.api_url = f"https://api.telegram.org/bot{token}"
+
+        # ⚠️ ПЕРЕВІРА ТОКЕНІВ
+        if not token:
+            logger.error("❌ Telegram токен не встановлено!")
+            self.api_url = None
+        elif not chat_id:
+            logger.error("❌ Telegram chat_id не встановлено!")
+            self.api_url = None
+        else:
+            self.api_url = f"https://api.telegram.org/bot{token}"
+            logger.info(f"✅ Telegram налаштовано (токен: {token[:20]}...)")
 
     def send_message(self, text, parse_mode="HTML"):
         """Відправити текстове повідомлення"""
+        if not self.api_url:
+            logger.error("❌ Telegram не налаштовано")
+            return False
+
         try:
             payload = {
                 "chat_id": self.chat_id,
@@ -29,14 +43,18 @@ class TelegramAPI:
                 timeout=10
             )
             response.raise_for_status()
-            logger.info("Повідомлення надіслано в Telegram")
+            logger.info("✅ Повідомлення надіслано в Telegram")
             return True
         except Exception as e:
-            logger.error(f"Помилка відправки Telegram: {e}")
+            logger.error(f"❌ Помилка відправки Telegram: {e}")
             return False
 
     def send_file(self, file_path, caption="", file_type="document"):
         """Відправити файл (document або photo)"""
+        if not self.api_url:
+            logger.error("❌ Telegram не налаштовано")
+            return False
+
         try:
             with open(file_path, 'rb') as f:
                 files = {file_type: f}
@@ -53,10 +71,10 @@ class TelegramAPI:
                     timeout=30
                 )
                 response.raise_for_status()
-            logger.info(f"Файл надіслано в Telegram")
+            logger.info(f"✅ Файл надіслано в Telegram")
             return True
         except Exception as e:
-            logger.error(f"Помилка відправки файлу: {e}")
+            logger.error(f"❌ Помилка відправки файлу: {e}")
             return False
 
     def send_network_report(self, store_location, pc_name, test_results):

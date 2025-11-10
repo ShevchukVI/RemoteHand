@@ -62,9 +62,16 @@ class UpdaterManager:
             response = requests.get(download_url, timeout=30)
             response.raise_for_status()
 
-            # Збезпечити як .new
-            new_exe = Path(sys.executable).parent / "RemoteHand_new.exe"
+            # Визначити шлях для нової версії
+            if getattr(sys, 'frozen', False):
+                # Якщо запущено як EXE
+                current_exe = Path(sys.executable)
+                new_exe = current_exe.parent / "RemoteHand_new.exe"
+            else:
+                # Якщо запущено як Python скрипт (DEV)
+                new_exe = Path.cwd() / "RemoteHand_new.exe"
 
+            # Зберегти нову версію
             with open(new_exe, 'wb') as f:
                 f.write(response.content)
 
@@ -82,23 +89,41 @@ class UpdaterManager:
             logger.info("🔧 DEV режим - пропускаємо оновлення")
             return False
 
-        logger.info("Перевірка оновлень...")
+        logger.info("🔍 Перевірка оновлень...")
 
         latest_version = self.get_latest_version()
         if not latest_version:
-            logger.info("Не вдалося перевірити оновлення")
+            logger.info("⚠️ Не вдалося перевірити оновлення")
             return False
 
         if self.compare_versions(self.current_version, latest_version):
             logger.info(f"📦 Доступне оновлення: {latest_version}")
-            logger.info(f"Поточна версія: {self.current_version}")
+            logger.info(f"📌 Поточна версія: {self.current_version}")
 
             # Завантажити нову версію
             new_exe = self.download_and_update(latest_version)
 
-            if new_exe:
-                logger.info(f"✅ Нова версія готова: {new_exe}")
-                logger.info("Запустіть RemoteHand.exe заново")
+            if new_exe and os.path.exists(new_exe):
+                logger.info(f"✅ Нова версія готова!")
+                logger.info(f"🔄 Перезапуск...")
+
+                # ⚠️ АВТОМАТИЧНИЙ ПЕРЕЗАПУСК
+                try:
+                    # Запустити нову версію
+                    subprocess.Popen([new_exe], shell=False)
+
+                    # Чекати 1 секунду
+                    time.sleep(1)
+
+                    # Закрити поточну версію
+                    logger.info("👋 Завершення роботи старої версії")
+                    sys.exit(0)
+
+                except Exception as e:
+                    logger.error(f"❌ Помилка перезапуску: {e}")
+                    logger.info(f"Запустіть вручну: {new_exe}")
+                    return False
+
                 return True
 
         logger.info(f"✅ Версія актуальна: {self.current_version}")

@@ -22,12 +22,14 @@ wheels/
 
 # PyInstaller
 *.manifest
+*.spec
 *.spec.bak
 
 # Environments
 venv/
 ENV/
 env/
+.venv/
 
 # IDE
 .vscode/
@@ -50,3 +52,8 @@ GitCommitTool.py
 # Telegram & RDP
 bot_config.json
 *.rdp
+
+# ⚠️ ВАЖЛИВО: .env з токенами НЕ повинен бути в Git!
+.env
+.env.local
+.env.production

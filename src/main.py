@@ -6,6 +6,11 @@ import threading
 import logging
 from pathlib import Path
 
+# Завантажити .env файл
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Налаштування логування
 logging.basicConfig(
     level=logging.INFO,
@@ -21,6 +26,7 @@ if not DEV_MODE:
     # ТІЛЬКИ В PRODUCTION
     try:
         from updater import check_and_update
+
         check_and_update()
     except Exception as e:
         logger.warning(f"Помилка перевірки оновлень: {e}")
@@ -37,6 +43,7 @@ from network_test import NetworkTest
 
 try:
     from rdp_manager import RDPManager
+
     rdp_manager_available = True
 except ImportError as e:
     rdp_manager_available = False
@@ -44,6 +51,7 @@ except ImportError as e:
 
 try:
     from anydesk_manager import AnyDeskManager
+
     anydesk_available = True
 except ImportError as e:
     anydesk_available = False
@@ -65,10 +73,15 @@ class RemoteHandApp(ctk.CTk):
 
         # Ініціалізація менеджерів
         self.config = ConfigManager()
-        self.telegram = TelegramAPI(
-            self.config.get("telegram_token"),
-            self.config.get("telegram_chat_id")
-        )
+
+        # ⚠️ ЗАВАНТАЖИТИ ТОКЕНИ З .env ЛИ CONFIG
+        telegram_token = os.getenv("TELEGRAM_TOKEN") or self.config.get("telegram_token")
+        telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID") or self.config.get("telegram_chat_id")
+
+        logger.info(f"Telegram token: {'✅ встановлено' if telegram_token else '❌ НЕ встановлено'}")
+        logger.info(f"Telegram chat_id: {'✅ встановлено' if telegram_chat_id else '❌ НЕ встановлено'}")
+
+        self.telegram = TelegramAPI(telegram_token, telegram_chat_id)
 
         if rdp_manager_available:
             self.rdp_manager = RDPManager(self.config, self.telegram)
@@ -82,11 +95,11 @@ class RemoteHandApp(ctk.CTk):
 
         self.network_test = NetworkTest(self.config, self.telegram)
 
-        # Перевірити перший запуск
+        # ⚠️ СТВОРИТИ UI ВСІ РАЗИ, а потім показати SetupWizard якщо перший запуск
+        self.setup_ui()
+
         if self.config.is_first_run():
             self.show_setup_wizard()
-        else:
-            self.setup_ui()
 
     def get_app_version(self):
         """Отримати версію програми"""
@@ -100,15 +113,27 @@ class RemoteHandApp(ctk.CTk):
 
     def show_setup_wizard(self):
         """Показати вікно налаштування при першому запуску"""
+
         def on_setup_complete(result):
             self.config.set("store", result["store"])
             self.config.set("location", result["location"])
             if result.get("user_name"):
                 self.config.set("user_name", result["user_name"])
-            self.setup_ui()
+            # ✅ Оновити UI після налаштування
+            self.refresh_ui()
 
         wizard = SetupWizard(self, on_setup_complete)
         self.wait_window(wizard)
+
+    def refresh_ui(self):
+        """Оновити UI після налаштування"""
+        # Оновити інформацію про магазин
+        user_info = self.config.store_location_text
+        user_name = self.config.get("user_name", "")
+        if user_name:
+            user_info += f" | 👤 {user_name}"
+
+        self.info_label.configure(text=f"📍 {user_info}")
 
     def setup_ui(self):
         """Створення UI"""
@@ -127,14 +152,13 @@ class RemoteHandApp(ctk.CTk):
         if user_name:
             user_info += f" | 👤 {user_name}"
 
-        info_label = ctk.CTkLabel(
+        self.info_label = ctk.CTkLabel(
             self,
             text=f"📍 {user_info}",
             font=ctk.CTkFont(size=11),
             text_color="gray"
         )
-        info_label.pack(pady=(0, 20))
-        self.info_label = info_label
+        self.info_label.pack(pady=(0, 20))
 
         # ==================== RDP БЛОК ====================
         rdp_frame = ctk.CTkFrame(self)
@@ -244,23 +268,23 @@ class RemoteHandApp(ctk.CTk):
 
         # ==================== ВЕРСІЯ + СТАТУС ОНОВЛЕННЯ ====================
         version_frame = ctk.CTkFrame(self)
-        version_frame.pack(anchor="se", padx=5, pady=5)
+        version_frame.pack(anchor="se", padx=10, pady=10)
 
         version_label = ctk.CTkLabel(
             version_frame,
             text=f"v{self.get_app_version()}",
-            font=ctk.CTkFont(size=8),
-            text_color="#cccccc"
+            font=ctk.CTkFont(size=9, weight="bold"),
+            text_color="#333333"
         )
-        version_label.pack(side="left", padx=2)
+        version_label.pack(side="left", padx=5)
 
         self.update_status_label = ctk.CTkLabel(
             version_frame,
             text="✅",
-            font=ctk.CTkFont(size=8),
-            text_color="#cccccc"
+            font=ctk.CTkFont(size=10),
+            text_color="green"
         )
-        self.update_status_label.pack(side="left", padx=2)
+        self.update_status_label.pack(side="left", padx=5)
 
     def open_rdp(self):
         """Відкрити RDP"""

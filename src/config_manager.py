@@ -1,66 +1,57 @@
-import os
 import json
+import os
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigManager:
-    """Менеджер для зберігання конфігурації в %APPDATA%"""
+    """Менеджер конфігурації"""
 
     def __init__(self):
-        self.app_name = "RemoteHand"
-        self.config_dir = Path(os.getenv('APPDATA')) / self.app_name
-        self.config_file = self.config_dir / "settings.json"
-        self.ensure_config_dir()
-        self.load_or_create_config()
+        self.config_dir = Path.home() / ".remotehand"
+        self.config_dir.mkdir(exist_ok=True)
+        self.config_file = self.config_dir / "config.json"
 
-    def ensure_config_dir(self):
-        """Створити папку якщо її немає"""
-        self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.config = self.load()
 
-    def load_or_create_config(self):
-        """Завантажити конфіг або створити новий"""
+    def load(self):
+        """Завантажити конфіг"""
         if self.config_file.exists():
-            with open(self.config_file, 'r', encoding='utf-8') as f:
-                self.config = json.load(f)
-        else:
-            # Конфіг за замовчуванням
-            self.config = {
-                "store": None,
-                "location": None,
-                "rdp_password": None,
-                "telegram_token": "7803515020:AAG3pEfxtXWB5MaVtH2VSFxzNMYoaCnOQxg",
-                "telegram_chat_id": "527405868"
-            }
-            self.save_config()
+            try:
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except:
+                pass
+        return {}
 
-    def save_config(self):
-        """Зберегти конфіг"""
-        with open(self.config_file, 'w', encoding='utf-8') as f:
-            json.dump(self.config, f, indent=4, ensure_ascii=False)
+    def save(self):
+        """Зберегти конфіг в JSON файл"""
+        try:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(self.config, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"Помилка збереження конфігу: {e}")
 
     def set(self, key, value):
-        """Встановити значення в конфіг"""
-        if key == "user_name":
-            self.config['user_name'] = value
-        elif key == "store":
-            self.config['store'] = value
-        elif key == "location":
-            self.config['location'] = value
-        # ... решта код ...
+        """Встановити значення"""
+        self.config[key] = value
         self.save()
 
     def get(self, key, default=""):
-        """Отримати значення з конфігу"""
-        if key == "user_name":
-            return self.config.get('user_name', '')
+        """Отримати значення"""
+        return self.config.get(key, default)
 
     def is_first_run(self):
-        """Перевірити, це перший запуск"""
-        return self.config.get("store") is None or self.config.get("location") is None
+        """Перевірити чи перший запуск"""
+        store = self.config.get('store', '')
+        location = self.config.get('location', '')
+        return not store or not location
 
     @property
     def store_location_text(self):
-        """Текст для відображення магазину та локації"""
-        store = self.get("store", "?")
-        location = self.get("location", "?")
-        return f"{store} - {location}"
+        """Отримати текст магазину/локації"""
+        store = self.config.get('store', 'Невідомо')
+        location = self.config.get('location', 'Невідомо')
+        return f"{store} / {location}"

@@ -43,6 +43,7 @@ jobs:
         pyinstaller --onefile `
           --windowed `
           --icon=assets/icon.ico `
+          --add-data ".env;." `
           --add-data "src/set_anydesk_password.py;src" `
           --add-data "version.txt;." `
           --collect-all customtkinter `
@@ -71,7 +72,8 @@ jobs:
           **Інструкція:**
           1. Завантажте RemoteHand.exe
           2. Запустіть його
-          3. Всі оновлення завантажуватимуться автоматично
+          3. Виберіть магазин та локацію
+          4. Всі оновлення завантажуватимуться автоматично
         draft: false
         prerelease: false
         files: |

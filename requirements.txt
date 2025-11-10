@@ -5,3 +5,4 @@ keyring==24.1.0
 python-telegram-bot==20.3
 packaging>=24.0
 pywin32>=300
+python-dotenv
