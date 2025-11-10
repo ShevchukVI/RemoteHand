@@ -89,14 +89,18 @@ class TelegramAPI:
         )
         return self.send_message(report)
 
-    def send_anydesk_info(self, store_location, pc_name, anydesk_id, password):
+    def send_anydesk_info(self, store_location, user_name, pc_name, anydesk_id, password):
         """Відправити AnyDesk інформацію"""
+
+        # Додати ПІБ якщо є
+        user_info = f"\n<b>👤 Користувач:</b> {user_name}" if user_name else ""
+
         message = (
             f"<b>🌐 AnyDesk - Запрос на підключення</b>\n\n"
-            f"<b>Магазин/Локація:</b> {store_location}\n"
-            f"<b>ПК:</b> <code>{pc_name}</code>\n\n"
-            f"<b>ID:</b> <code>{anydesk_id}</code>\n"
-            f"<b>Пароль:</b> <code>{password}</code>"
+            f"<b>📍 Магазин/Локація:</b> {store_location}{user_info}\n"
+            f"<b>💻 ПК:</b> <code>{pc_name}</code>\n\n"
+            f"<b>🆔 ID:</b> <code>{anydesk_id}</code>\n"
+            f"<b>🔐 Пароль:</b> <code>{password}</code>"
         )
         return self.send_message(message)
 

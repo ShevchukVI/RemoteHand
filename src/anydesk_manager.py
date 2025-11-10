@@ -6,6 +6,7 @@ import logging
 import psutil
 import platform
 import ctypes
+import socket
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -122,8 +123,13 @@ class AnyDeskManager:
         try:
             logger.info(f"🔐 Запускаю встановлення пароля з адмін правами...")
 
-            # Шлях до скрипту
-            script_path = os.path.join(os.path.dirname(__file__), "set_anydesk_password.py")
+            # Визначити шлях до скрипту
+            if getattr(sys, 'frozen', False):
+                # Якщо EXE - скрипт поруч
+                script_path = os.path.join(os.path.dirname(sys.executable), "src", "set_anydesk_password.py")
+            else:
+                # Якщо DEV
+                script_path = os.path.join(os.path.dirname(__file__), "set_anydesk_password.py")
 
             if not os.path.exists(script_path):
                 logger.error(f"Скрипт не знайдено: {script_path}")
@@ -134,15 +140,13 @@ class AnyDeskManager:
             env["ANYDESK_PASSWORD"] = UNATTENDED_PASSWORD
 
             # Запустити скрипт з адмін правами
-            import ctypes
-
             ctypes.windll.shell32.ShellExecuteW(
                 None,
                 "runas",
                 sys.executable,
                 f'"{script_path}" "{self.anydesk_path}"',
                 None,
-                0  # SW_HIDE
+                1  # SW_SHOW - показати вікно
             )
 
             logger.info(f"✅ Запрос адмін прав надіслано користувачу")
@@ -151,6 +155,8 @@ class AnyDeskManager:
 
         except Exception as e:
             logger.error(f"❌ Помилка: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def get_connection_id(self) -> Optional[str]:
@@ -191,9 +197,13 @@ class AnyDeskManager:
             connection_id = self.get_connection_id()
             if connection_id:
                 try:
+                    # ⚠️ ДОДАТИ ПІБ
+                    user_name = self.config.get("user_name", "")
+
                     self.telegram.send_anydesk_info(
                         self.config.store_location_text,
-                        os.environ.get('COMPUTERNAME', 'Unknown'),
+                        user_name,  # ⬅️ ПІБ
+                        socket.gethostname(),  # ПК
                         connection_id,
                         password
                     )
@@ -224,11 +234,15 @@ class AnyDeskManager:
             time.sleep(3)
             connection_id = self.get_connection_id()
 
-        # Крок 6: Надіслати в Telegram
+        # Крок 6: Надіслати в Telegram з ПІБ
         try:
+            # ⚠️ ДОДАТИ ПІБ
+            user_name = self.config.get("user_name", "")
+
             self.telegram.send_anydesk_info(
                 self.config.store_location_text,
-                os.environ.get('COMPUTERNAME', 'Unknown'),
+                user_name,  # ⬅️ ПІБ
+                socket.gethostname(),  # ПК
                 connection_id if connection_id else "не отримано",
                 password
             )

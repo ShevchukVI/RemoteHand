@@ -104,11 +104,20 @@ class RemoteHandApp(ctk.CTk):
     def get_app_version(self):
         """Отримати версію програми"""
         try:
-            version_file = Path(__file__).parent.parent / "version.txt"
+            if getattr(sys, 'frozen', False):
+                # Якщо EXE - шукаємо поруч з EXE
+                base_path = Path(sys.executable).parent
+            else:
+                # Якщо DEV - шукаємо в корені проекту
+                base_path = Path(__file__).parent.parent
+
+            version_file = base_path / "version.txt"
+
             if version_file.exists():
                 return version_file.read_text(encoding='utf-8').strip()
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Помилка читання версії: {e}")
+
         return "1.0.0"
 
     def show_setup_wizard(self):
