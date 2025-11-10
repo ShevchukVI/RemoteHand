@@ -15,12 +15,12 @@ VSVersionInfo(
           [
             StringStruct(u'CompanyName', u'RemoteHand'),
             StringStruct(u'FileDescription', u'RemoteHand - RDP & AnyDesk Manager'),
-            StringStruct(u'FileVersion', u'1.0.21.0'),
+            StringStruct(u'FileVersion', u'1.0.23.0'),
             StringStruct(u'InternalName', u'RemoteHand'),
             StringStruct(u'LegalCopyright', u'Copyright © 2025'),
             StringStruct(u'OriginalFilename', u'RemoteHand.exe'),
             StringStruct(u'ProductName', u'RemoteHand'),
-            StringStruct(u'ProductVersion', u'1.0.21')
+            StringStruct(u'ProductVersion', u'1.0.23')
           ]
         )
       ]
