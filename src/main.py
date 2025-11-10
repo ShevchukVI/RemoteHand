@@ -163,22 +163,20 @@ class RemoteHandApp(ctk.CTk):
             self.show_setup_wizard()
 
     def get_app_version(self):
-        """Отримати версію програми з правильним читанням"""
+        """Отримати версію програми"""
         try:
+            import re
+
             if getattr(sys, 'frozen', False):
-                # EXE режим - шукаємо в sys._MEIPASS
                 base_path = Path(sys._MEIPASS)
             else:
-                # DEV режим
                 base_path = Path(__file__).parent.parent
 
             version_file = base_path / "version.txt"
 
             if version_file.exists():
-                # ✅ Читаємо з UTF-8-SIG (прибирає BOM)
                 version = version_file.read_text(encoding='utf-8-sig').strip()
-                # Прибрати всі непотрібні символи (залишити тільки цифри та крапки)
-                import re
+                # Прибрати всі непотрібні символи
                 version = re.sub(r'[^0-9.]', '', version)
                 return version if version else "1.0.0"
         except Exception as e:
