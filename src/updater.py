@@ -84,6 +84,7 @@ class UpdaterManager:
             return None
 
     def run_update_script(self, new_exe_path: Path):
+        """Створює та запускає НАДІЙНИЙ скрипт оновлення"""
         if not self.current_exe_path:
             logger.warning("⚠️ Неможливо створити скрипт оновлення в DEV режимі.")
             return
@@ -91,38 +92,43 @@ class UpdaterManager:
         current_exe_abs = str(self.current_exe_path.resolve())
         new_exe_abs = str(new_exe_path.resolve())
 
+        logger.info(f"📝 Створюю скрипт оновлення...")
+        logger.info(f"   Старий файл: {current_exe_abs}")
+        logger.info(f"   Новий файл: {new_exe_abs}")
+
         bat_content = f"""@ECHO OFF
-TITLE RemoteHand Auto Update
-ECHO ====================================
-ECHO  RemoteHand Auto Update
-ECHO ====================================
-ECHO.
-ECHO [1/4] Closing RemoteHand...
-TASKKILL /F /IM "RemoteHand.exe" >nul 2>&1
+    TITLE RemoteHand Auto Update v1.0.19
+    COLOR 0A
+    ECHO ====================================
+    ECHO  RemoteHand Auto Update v1.0.19
+    ECHO ====================================
+    ECHO.
+    ECHO [1/4] Closing RemoteHand...
+    TASKKILL /F /IM "RemoteHand.exe" >nul 2>&1
 
-ECHO [2/4] Waiting for file unlock (5 sec)...
-TIMEOUT /T 5 /NOBREAK >nul
+    ECHO [2/4] Waiting for file unlock (5 sec)...
+    TIMEOUT /T 5 /NOBREAK >nul
 
-ECHO [3/4] Replacing old version...
-MOVE /Y "{new_exe_abs}" "{current_exe_abs}"
+    ECHO [3/4] Replacing old version...
+    MOVE /Y "{new_exe_abs}" "{current_exe_abs}"
 
-IF ERRORLEVEL 1 (
-    ECHO ❌ Error: Failed to replace file!
-    PAUSE
-    EXIT /B 1
-)
+    IF ERRORLEVEL 1 (
+        ECHO ❌ Error: Failed to replace file!
+        PAUSE
+        EXIT /B 1
+    )
 
-ECHO [4/4] Starting RemoteHand...
-START "" "{current_exe_abs}"
+    ECHO [4/4] Starting RemoteHand...
+    START "" "{current_exe_abs}"
 
-ECHO.
-ECHO ✅ Update complete!
-ECHO This window will close in 2 seconds...
-TIMEOUT /T 2 /NOBREAK >nul
+    ECHO.
+    ECHO ✅ Update complete! New version: 1.0.19
+    ECHO This window will close in 3 seconds...
+    TIMEOUT /T 3 /NOBREAK >nul
 
-REM Видалити сам .bat файл після завершення
-(goto) 2>nul & del "%~f0"
-"""
+    REM Видалити сам .bat файл після завершення
+    (goto) 2>nul & del "%~f0"
+    """
 
         bat_path = self.app_dir / "update.bat"
 
@@ -132,6 +138,7 @@ REM Видалити сам .bat файл після завершення
 
             logger.info(f"✅ Створено update.bat → {bat_path}")
 
+            # Запуск .bat файлу
             subprocess.Popen(
                 [str(bat_path)],
                 creationflags=subprocess.CREATE_NEW_CONSOLE,
@@ -139,9 +146,10 @@ REM Видалити сам .bat файл після завершення
                 shell=True
             )
 
-            logger.info("🚀 Запущено update.bat, завершую програму...")
+            logger.info("🚀 Запущено update.bat, завершую програму через 2 сек...")
 
-            time.sleep(1)
+            # Завершити програму, щоб батник міг замінити EXE
+            time.sleep(2)
             sys.exit(0)
 
         except Exception as e:

@@ -163,31 +163,28 @@ class RemoteHandApp(ctk.CTk):
             self.show_setup_wizard()
 
     def get_app_version(self):
-        """Отримати версію програми (з обробкою кодувань)"""
+        """Отримати версію програми з правильним читанням"""
         try:
-            version_file = self.get_resource_path("version.txt")
+            if getattr(sys, 'frozen', False):
+                # EXE режим - шукаємо в sys._MEIPASS
+                base_path = Path(sys._MEIPASS)
+            else:
+                # DEV режим
+                base_path = Path(__file__).parent.parent
 
-            if not version_file.exists():
-                logger.warning(f"Не знайдено version.txt у {version_file}")
-                return "1.0.14"  # Fallback
+            version_file = base_path / "version.txt"
 
-            try:
-                # Спробувати UTF-8-SIG (стандарт з BOM)
-                return version_file.read_text(encoding='utf-8-sig').strip()
-            except UnicodeDecodeError:
-                try:
-                    # Якщо не вийшло (byte 0xff), спробувати UTF-16
-                    logger.warning("version.txt не в UTF-8, пробую UTF-16...")
-                    return version_file.read_text(encoding='utf-16').strip()
-                except Exception as e_inner:
-                    logger.error(f"Не вдалося прочитати version.txt ні в UTF-8, ні в UTF-16: {e_inner}")
-            except Exception as e_outer:
-                logger.error(f"Помилка читання версії: {e_outer}")
-
+            if version_file.exists():
+                # ✅ Читаємо з UTF-8-SIG (прибирає BOM)
+                version = version_file.read_text(encoding='utf-8-sig').strip()
+                # Прибрати всі непотрібні символи (залишити тільки цифри та крапки)
+                import re
+                version = re.sub(r'[^0-9.]', '', version)
+                return version if version else "1.0.0"
         except Exception as e:
-            logger.error(f"Критична помилка get_app_version: {e}")
+            logger.error(f"Помилка читання версії: {e}")
 
-        return "1.0.14"  # За замовчуванням
+        return "1.0.0"
 
     def show_setup_wizard(self):
         """Показати вікно налаштування при першому запуску"""
